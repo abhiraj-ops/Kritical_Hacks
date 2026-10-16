@@ -25,8 +25,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          charts: ['recharts'],
-          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand'],
+          vendor: ['react', 'react-dom'],
         },
       },
     },

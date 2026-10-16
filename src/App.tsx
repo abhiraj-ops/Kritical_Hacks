@@ -83,7 +83,6 @@ export default function App() {
     for (let i = 0; i < AGENT_STAGES.length; i++) {
       setAgentStage(i);
       setAgentNote(`${AGENT_STAGES[i]}…`);
-      // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => {
         const t = window.setTimeout(r, 850);
         timers.current.push(t);
