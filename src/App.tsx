@@ -143,9 +143,11 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-[1.1fr_1fr]">
+            {/* minmax(0,…) stops the right column's min-content width from
+                  blowing past its fr share and squeezing the map to nothing. */}
+              <div className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               {/* MAP */}
-              <div className="border-b p-4 sm:p-6 lg:border-b-0 lg:border-r" style={{ borderColor: 'var(--border)' }}>
+              <div className="min-w-0 border-b p-4 sm:p-6 lg:border-b-0 lg:border-r" style={{ borderColor: 'var(--border)' }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
@@ -194,7 +196,7 @@ export default function App() {
               </div>
 
               {/* INTELLIGENCE PANEL */}
-              <div className="p-4 sm:p-6">
+              <div className="min-w-0 p-4 sm:p-6">
                 <StatCards alerts={scoped} agentCount={agentAlerts.length} loading={loading} />
 
                 <div className="mb-2 mt-5 flex items-center justify-between">

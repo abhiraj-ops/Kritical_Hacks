@@ -1,0 +1,77 @@
+00:00:00,000 --> 00:00:03,200
+See environmental risks before they become disasters.
+
+00:00:03,200 --> 00:00:07,600
+251 real hazards. Right now. No mock data.
+
+00:00:07,600 --> 00:00:12,200
+Emergency teams have no data problem. They have a filtering problem.
+
+00:00:12,200 --> 00:00:17,400
+USGS, GDACS, Open-Meteo. Each speaks a different language.
+
+00:00:17,400 --> 00:00:22,400
+Different schemas. Different severity scales. Ninety seconds to decide.
+
+00:00:22,400 --> 00:00:28,000
+So we fetch all five sources server-side and normalize to one schema.
+
+00:00:28,000 --> 00:00:33,200
+Forty earthquakes. Two hundred fifteen disaster alerts. Live.
+
+00:00:33,200 --> 00:00:38,200
+Clustered at low zoom, individual severity at high zoom.
+
+00:00:38,200 --> 00:00:43,200
+Click any marker for source, time and severity.
+
+00:00:43,200 --> 00:00:48,400
+Filter to any region. The URL updates, so views are shareable.
+
+00:00:48,400 --> 00:00:53,800
+Now the part that makes this different.
+
+00:00:53,800 --> 00:00:58,800
+Ask it a region. It goes to the live web.
+
+00:00:58,800 --> 00:01:04,200
+Search, fetch markdown, classify severity, dispatch.
+
+00:01:04,200 --> 00:01:09,800
+Real network time. Not simulated progress.
+
+00:01:09,800 --> 00:01:14,800
+No API key ever reaches the browser.
+
+00:01:14,800 --> 00:01:20,200
+Everything lands in a triage log. Sortable and filterable.
+
+00:01:20,200 --> 00:01:25,200
+Searchable, and exportable straight to CSV.
+
+00:01:25,200 --> 00:01:30,400
+Four themes, including light and high-contrast accessibility modes.
+
+00:01:30,400 --> 00:01:35,800
+Applied before first paint, and persisted across reloads.
+
+00:01:35,800 --> 00:01:40,800
+React, TypeScript, Leaflet, Netlify Functions.
+
+00:01:40,800 --> 00:01:46,200
+Cached five minutes. When a source fails it serves stale data,
+
+00:01:46,200 --> 00:01:51,400
+with a badge. It never invents an alert.
+
+00:01:51,400 --> 00:01:56,600
+Sources that need a key say so. We are not faking numbers.
+
+00:01:56,600 --> 00:02:01,600
+Next: multilingual SOS triage and predictive dispatch.
+
+00:02:01,600 --> 00:02:06,200
+EcoPulse AI. Built with TinyFish.
+
+00:02:06,200 --> 00:02:09,400
+Live at ecopulseaiapp.netlify.app

@@ -1,0 +1,33 @@
+# EcoPulse AI - 2.5-minute demo video captions
+# Format: start_seconds,duration_seconds,text
+#
+# Rendered with ffmpeg drawtext (not the libass subtitles filter, which is
+# broken in some Windows ffmpeg builds). Avoid apostrophes and colons: they
+# collide with ffmpeg filter-syntax escaping.
+
+0.0,3.2,See environmental risks before they become disasters.
+3.2,4.4,251 real hazards. Right now. No mock data.
+7.6,4.6,Emergency teams have no data problem. They have a filtering problem.
+12.2,5.2,USGS, GDACS, Open-Meteo. Each speaks a different language.
+17.4,5.0,Different schemas. Different severity scales. Ninety seconds to decide.
+22.4,5.6,So we fetch all five sources server-side and normalize to one schema.
+28.0,5.2,Forty earthquakes. Two hundred fifteen disaster alerts. Live.
+33.2,5.0,Clustered at low zoom, individual severity at high zoom.
+38.2,5.0,Click any marker for source, time and severity.
+43.2,5.2,Filter to any region. The URL updates, so views are shareable.
+48.4,5.4,Now the part that makes this different.
+53.8,5.0,Ask it a region. It goes to the live web.
+58.8,5.4,Search, fetch markdown, classify severity, dispatch.
+64.2,5.6,Real network time. Not simulated progress.
+69.8,5.0,No API key ever reaches the browser.
+74.8,5.4,Everything lands in a triage log. Sortable and filterable.
+80.2,5.0,Searchable, and exportable straight to CSV.
+85.2,5.2,Four themes, including light and high-contrast accessibility modes.
+90.4,5.4,Applied before first paint, and persisted across reloads.
+95.8,5.0,React, TypeScript, Leaflet, Netlify Functions.
+100.8,5.4,Cached five minutes. When a source fails it serves stale data,
+106.2,5.2,with a badge. It never invents an alert.
+111.4,5.2,Sources that need a key say so. We are not faking numbers.
+116.6,5.0,Next: multilingual SOS triage and predictive dispatch.
+121.6,4.6,EcoPulse AI. Built with TinyFish.
+126.2,3.2,Live at ecopulseaiapp.netlify.app
