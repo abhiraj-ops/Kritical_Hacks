@@ -9,9 +9,11 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Functions live in netlify/functions/api/* and are auto-served at /api/*,
-# so no explicit /api redirect is needed — only the SPA fallback below.
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# NOTE: there is intentionally NO `/* -> /index.html` SPA fallback here.
+#
+# This app has no client-side routing — every link is an in-page anchor
+# (#platform, #live-map, …) — so a catch-all rewrite would only serve HTML
+# where the API should be. A `/*` rule makes Netlify answer /.netlify/functions/*
+# and /api/* with index.html, which silently breaks every data request.
+#
+# Functions in netlify/functions/api/* are auto-served at /api/*.
