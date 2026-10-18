@@ -6,13 +6,13 @@
  * rate limits. If a source fails we serve its last-known-good data and mark
  * the response `stale` rather than inventing anything.
  */
-import type { AlertsResponse, NormalizedAlert } from './_shared/core';
-import { cached, rememberGood, recallGood, emptyCounts } from './_shared/core';
-import { fetchUsgs } from './_shared/usgs';
-import { fetchGdacs } from './_shared/gdacs';
-import { fetchOpenMeteo } from './_shared/openmeteo';
-import { fetchOpenAq } from './_shared/openaq';
-import { fetchFires } from './_shared/fires';
+import type { AlertsResponse, NormalizedAlert } from '../_shared/core';
+import { cached, rememberGood, recallGood, emptyCounts } from '../_shared/core';
+import { fetchUsgs } from '../_shared/usgs';
+import { fetchGdacs } from '../_shared/gdacs';
+import { fetchOpenMeteo } from '../_shared/openmeteo';
+import { fetchOpenAq } from '../_shared/openaq';
+import { fetchFires } from '../_shared/fires';
 
 const TTL_MS = 5 * 60 * 1000;
 const CACHE_KEY = 'alerts:v2';

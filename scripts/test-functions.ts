@@ -4,8 +4,8 @@
  *
  *   npm run test:functions
  */
-import alerts from '../netlify/functions/alerts.ts';
-import agent from '../netlify/functions/agent.ts';
+import alerts from '../netlify/functions/api/alerts.ts';
+import agent from '../netlify/functions/api/agent.ts';
 
 function check(label: string, ok: boolean, extra = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${extra ? ` — ${extra}` : ''}`);

@@ -8,8 +8,8 @@
  * Every stage reports its own status; failures are returned honestly rather
  * than papered over with fabricated alerts.
  */
-import type { HazardType, Severity } from './_shared/core';
-import { resolveRegion } from './_shared/core';
+import type { HazardType, Severity } from '../_shared/core';
+import { resolveRegion } from '../_shared/core';
 
 const SEARCH_ENDPOINT = 'https://api.search.tinyfish.ai';
 const FETCH_ENDPOINT = 'https://api.fetch.tinyfish.ai';
