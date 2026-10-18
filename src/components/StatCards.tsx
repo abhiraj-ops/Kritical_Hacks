@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Activity, Bell, Database, Timer } from 'lucide-react';
 import type { Alert } from '@/api/client';
 
@@ -8,7 +9,7 @@ interface Props {
 }
 
 /** Stat cards are computed from real data — never hard-coded. */
-export function StatCards({ alerts, agentCount, loading }: Props) {
+export const StatCards = memo(function StatCards({ alerts, agentCount, loading }: Props) {
   const sources = new Set(alerts.map((a) => a.source));
   sources.add('TinyFish Agent');
 
@@ -63,7 +64,7 @@ export function StatCards({ alerts, agentCount, loading }: Props) {
       ))}
     </div>
   );
-}
+});
 
 function formatAge(iso: string): string {
   const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));

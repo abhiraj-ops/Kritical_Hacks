@@ -1,4 +1,4 @@
-import { Bot, CheckCircle2, ExternalLink, Loader2, Search } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, ExternalLink, Loader2, Search } from 'lucide-react';
 import type { AgentPayload } from '@/api/client';
 
 interface Props {
@@ -79,15 +79,30 @@ export function AgentPanel({ running, result, error, onRun, regionLabel }: Props
       </ol>
 
       {error && (
-        <p
-          className="mt-3 rounded-lg p-3 text-xs"
+        <div
+          className="mt-3 rounded-xl border p-3"
           style={{
-            background: 'color-mix(in srgb, var(--severity-critical) 12%, transparent)',
-            color: 'var(--severity-critical)',
+            borderColor: 'color-mix(in srgb, var(--severity-medium) 45%, transparent)',
+            background: 'color-mix(in srgb, var(--severity-medium) 10%, transparent)',
           }}
+          role="status"
         >
-          {error}
-        </p>
+          <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--severity-medium)' }}>
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Agent unavailable on this deployment
+          </p>
+          <p className="mt-1.5 text-[11px] leading-5" style={{ color: 'var(--text-muted)' }}>
+            {error}
+          </p>
+          <p className="mt-1.5 text-[11px] leading-5" style={{ color: 'var(--text-subtle)' }}>
+            Sensor feeds below are unaffected and still fully live. To enable the agent, add{' '}
+            <code className="rounded px-1 py-0.5" style={{ background: 'var(--panel-inner)' }}>
+              TINYFISH_API_KEY
+            </code>{' '}
+            to your host's environment variables and redeploy — the key is read server-side only, never in the
+            browser.
+          </p>
+        </div>
       )}
 
       {result?.ok && result.results && result.results.length > 0 && (

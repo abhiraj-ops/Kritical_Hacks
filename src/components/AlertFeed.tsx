@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { AlertTriangle, Inbox, Radio } from 'lucide-react';
 import type { Alert } from '@/api/client';
 import { SEVERITY_META, TYPE_META, relativeTime } from '@/lib/format';
@@ -8,8 +9,24 @@ interface Props {
   onSelect: (a: Alert) => void;
 }
 
-/** Auto-scrolling live feed. Pauses on hover and on focus for keyboard users. */
-export function AlertFeed({ alerts, loading, onSelect }: Props) {
+/**
+ * Auto-scrolling live feed. Pauses on hover and on focus for keyboard users.
+ *
+ * Only the newest FEED_WINDOW records are rendered (twice, for a seamless
+ * scroll loop). The full set lives in the triage table below — rendering all
+ * ~250 here produced 500 buttons and made every theme switch and region filter
+ * take over a second.
+ */
+const FEED_WINDOW = 18;
+
+function AlertFeedImpl({ alerts, loading, onSelect }: Props) {
+  const items = useMemo(() => {
+    const win = alerts.slice(0, FEED_WINDOW);
+    return [...win, ...win];
+  }, [alerts]);
+
+  const shown = alerts.length > FEED_WINDOW;
+
   if (loading) {
     return (
       <div className="space-y-2" aria-busy="true" aria-label="Loading alerts">
@@ -34,14 +51,12 @@ export function AlertFeed({ alerts, loading, onSelect }: Props) {
     );
   }
 
-  const items = [...alerts, ...alerts];
-
   return (
     <div
       className="feed-mask relative h-72 overflow-hidden rounded-2xl border"
       style={{ borderColor: 'var(--border)', background: 'color-mix(in srgb, var(--bg-deep) 45%, transparent)' }}
       tabIndex={0}
-      aria-label={`Live alert feed, ${alerts.length} alerts`}
+      aria-label={`Live alert feed, showing newest ${Math.min(alerts.length, FEED_WINDOW)} of ${alerts.length} alerts`}
     >
       <div className="feed-track space-y-2 p-2.5">
         {items.map((a, i) => {
@@ -91,9 +106,16 @@ export function AlertFeed({ alerts, loading, onSelect }: Props) {
           );
         })}
       </div>
+      {shown && (
+        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--text-subtle)' }}>
+          Newest {FEED_WINDOW} of {alerts.length} alerts · full list in the triage log below
+        </p>
+      )}
     </div>
   );
 }
+
+export const AlertFeed = memo(AlertFeedImpl);
 
 /** Shown when the upstream providers are unreachable. */
 export function DataUnavailable({ message }: { message?: string | null }) {

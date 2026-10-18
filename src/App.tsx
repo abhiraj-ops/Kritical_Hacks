@@ -199,7 +199,7 @@ export default function App() {
               <div className="min-w-0 p-4 sm:p-6">
                 <StatCards alerts={scoped} agentCount={agentAlerts.length} loading={loading} />
 
-                <div className="mb-2 mt-5 flex items-center justify-between">
+                <div className="mb-2 mt-5 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--accent)' }}>
                     Live Scraping Agent Feed
                   </p>
