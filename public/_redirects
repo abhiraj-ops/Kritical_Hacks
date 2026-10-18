@@ -1,0 +1,11 @@
+# Maps the clean /api/* paths onto the Netlify Functions.
+#
+# `_redirects` rules are applied AFTER file and function resolution, unlike
+# netlify.toml [[redirects]] rules — so these never shadow /.netlify/functions/*.
+#
+# There is deliberately no `/* /index.html 200` catch-all: this app has no
+# client-side routing (every link is an in-page anchor), and a catch-all rewrite
+# makes Netlify answer API requests with HTML.
+
+/api/alerts  /.netlify/functions/alerts  200
+/api/agent   /.netlify/functions/agent   200
