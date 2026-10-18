@@ -14,7 +14,11 @@
     "type-check": "tsc -b --pretty false && tsc -p tsconfig.functions.json --pretty false",
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview",
-    "test:functions": "tsx scripts/test-functions.ts"
+    "test:functions": "tsx scripts/test-functions.ts",
+    "video:record": "node scripts/record-demo.mjs",
+    "video:build": "node scripts/make-video.mjs",
+    "video": "npm run video:record && npm run video:build",
+    "video:check-layout": "node scripts/measure-layout.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
