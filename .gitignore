@@ -1,5 +1,10 @@
 node_modules
 dist
+
+# Demo video artefacts — recordings, frames and rendered output are
+# build products, not source. Re-create with: npm run video
+video/
+
 .env
 .env.local
 .env.*.local
@@ -8,3 +13,4 @@ dist
 .vscode
 coverage
 *.tsbuildinfo
+.ffmpeg-path
