@@ -5,6 +5,24 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Netlify Functions are exposed under /api/* — keep this BEFORE the SPA fallback.
+[[redirects]]
+  from = "/api/alerts"
+  to = "/.netlify/functions/alerts"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/agent"
+  to = "/.netlify/functions/agent"
+  status = 200
+  force = true
+
+# SPA fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"

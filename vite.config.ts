@@ -13,19 +13,21 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
     proxy: {
+      // Netlify Functions run on port 8888 via `netlify dev`.
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:8888',
         changeOrigin: true,
       },
     },
   },
   build: {
     sourcemap: true,
-    chunkSizeWarningLimit: 750,
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
+          map: ['leaflet', 'leaflet.markercluster'],
         },
       },
     },

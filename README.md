@@ -6,21 +6,22 @@
 
 ### See Environmental Risks Before They Become Disasters.
 
-Monitor real-time environmental threats, coordinate emergency response, and triage ground-level crisis data with TinyFish live web scraping agents.
+Real-time environmental and disaster intelligence. Live hazard feeds are fetched **server-side by Netlify
+Functions**, normalized into one schema, and rendered on a Leaflet map with AI triage — powered by
+[TinyFish](https://tinyfish.ai) live web agents.
 
 <p>
   <a href="https://github.com/abhiraj-ops/ecopulse-ai"><img src="https://img.shields.io/github/stars/abhiraj-ops/ecopulse-ai?style=for-the-badge&label=Stars&logo=github" alt="GitHub stars" /></a>
   <a href="https://github.com/abhiraj-ops/ecopulse-ai/network/members"><img src="https://img.shields.io/github/forks/abhiraj-ops/ecopulse-ai?style=for-the-badge&label=Forks&logo=github" alt="GitHub forks" /></a>
   <a href="https://github.com/abhiraj-ops/ecopulse-ai/commits/main"><img src="https://img.shields.io/github/last-commit/abhiraj-ops/ecopulse-ai?style=for-the-badge&label=Last%20Commit&logo=github" alt="Last commit" /></a>
-  <img src="https://img.shields.io/github/license/abhiraj-ops/ecopulse-ai?style=for-the-badge&label=License" alt="License" />
 </p>
 
 <p>
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=111" alt="React 18" />
   <img src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="Strict TypeScript" />
   <img src="https://img.shields.io/badge/Tailwind_CSS-3-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/Vite-6-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/TinyFish-Live_Agents-2563EB?style=for-the-badge&logo=rss&logoColor=white" alt="TinyFish" />
+  <img src="https://img.shields.io/badge/Leaflet-1.9-1E6B3A?style=for-the-badge&logo=leaflet&logoColor=white" alt="Leaflet" />
+  <img src="https://img.shields.io/badge/Netlify_Functions-00C7B7?style=for-the-badge&logo=netlify&logoColor=white" alt="Netlify" />
 </p>
 
 <p>
@@ -31,99 +32,156 @@ Monitor real-time environmental threats, coordinate emergency response, and tria
 
 ---
 
-## Live Demo
+## Data sources — live vs. demo
 
-| Environment | URL |
-|---|---|
-| Local dev | `http://localhost:5173/` (via `npm run dev`) |
-| Production | _Add your Netlify URL here after deploy_ |
+**Every alert in the UI comes from a real upstream feed.** Nothing is fabricated. When a source needs a key
+you have not set, the UI says *"Key needed"* and that layer simply stays empty.
 
-> Without a TinyFish key the app runs in **simulated demo mode** — every interaction still works.
+| Source | Key needed | What it provides | Endpoint |
+|---|---|---|---|
+| **USGS Earthquakes** | No | M2.5+ earthquakes, magnitude → severity | `earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson` |
+| **GDACS** | No | Global multi-hazard alerts (storm, flood, quake, volcano) | `www.gdacs.org/xml/rss.xml` |
+| **Open-Meteo** | No | Temperature, wind gusts, rainfall probability | `api.open-meteo.com/v1/forecast` |
+| **OpenAQ** | `OPENAQ_API_KEY` | PM2.5 / PM10 from CPCB and India stations | `api.openaq.org/v3/locations/latest` |
+| **NASA FIRMS** | `NASA_FIRMS_MAP_KEY` | VIIRS active fire hotspots | `firms.modaps.eosdis.nasa.gov/api/area/csv` |
+| **TinyFish Search + Fetch** | `TINYFISH_API_KEY` | Live web search → markdown extraction → AI classification | `api.search.tinyfish.ai`, `api.fetch.tinyfish.ai` |
 
-## Features
+With only the three keyless sources configured you still get **~250 real records** per response.
+The three no-key feeds are free and unlimited; OpenAQ and FIRMS are the only ones gated.
 
-- **Live Command Center** — regional crisis overview with urgency-coded clusters (Delhi-NCR Critical, Mumbai High, Chennai Moderate)
-- **Interactive hazard map** — click a cluster to filter the whole dashboard by region
-- **KPI cards** — Active Live Alerts (14), TinyFish Scraped Sources (42), AI Triage Confidence (96.4%), Avg Response Time (1.2s)
-- **Live scraping agent feed** — auto-scrolling disaster reports with source, title, time and AI urgency badges
-- **Run TinyFish Web Agent** — animated pipeline: Scanning Live Web → Fetching Markdown → Classifying Severity → Alert Dispatched
-- **AI triage table** — incident ID, category, extracted location, urgency score (0–10), AI status
-- **Connected sources** — TinyFish Search API, TinyFish Fetch API, Regional News, Municipal Dashboards, Social Feeds
-- Fully responsive across desktop, tablet and mobile
+## Environment variables
 
-## Tech Stack
+Set these in the Netlify dashboard (Site settings → Environment variables) or in a local `.env` file.
 
-| Layer | Choice |
-|---|---|
-| UI | React 18 + TypeScript (strict) |
-| Build | Vite 6 |
-| Styling | Tailwind CSS 3 + glassmorphism design system |
-| Icons | Lucide |
-| Live data | TinyFish Search + Fetch APIs (with graceful simulated fallback) |
-| Hosting | Netlify (`netlify.toml` + SPA `_redirects` included) |
+| Variable | Required | Purpose |
+|---|---|---|
+| `TINYFISH_API_KEY` | For the agent button | Enables *Run TinyFish Web Agent*. Get one at [agent.tinyfish.ai/api-keys](https://agent.tinyfish.ai/api-keys) |
+| `OPENAQ_API_KEY` | Optional | Enables live air-quality layer |
+| `NASA_FIRMS_MAP_KEY` | Optional | Enables live fire-hotspot layer |
+| `NASA_FIRMS_DAY` | Optional | Days of FIRMS data to request (default `1`) |
 
-## Project Structure
+Keys are read **only inside Netlify Functions**. Nothing secret is bundled into the browser — there is no
+`VITE_`-prefixed key anywhere in this repo. `.env` and `.env.local` are gitignored; `.env.example` holds
+names only.
 
-```
-ecopulse-ai/
-├── public/                  # logo, Netlify _redirects
-├── src/
-│   ├── App.tsx              # full EcoPulse experience (nav, hero, dashboard, sections)
-│   ├── main.tsx
-│   ├── index.css            # midnight theme, glass utilities, feed/map animations
-│   ├── data/ecopulse.ts     # regions, feed, triage rows, demo titles
-│   └── services/tinyfish.ts # Search + Fetch clients, urgency classifier
-├── index.html
-├── netlify.toml
-└── .env.example
-```
-
-## Getting Started
+## Getting started
 
 ```bash
 npm install
-cp .env.example .env.local   # then set VITE_TINYFISH_API_KEY inside
-npm run dev                  # → http://localhost:5173/
+cp .env.example .env.local     # add whichever keys you have
+npm run dev:full               # API on :8888 + Vite on :5173
 ```
 
-Production build:
+Open <http://localhost:5173>.
+
+Other scripts:
 
 ```bash
-npm run build     # type-check + vite build → dist/
-npm run preview
+npm run dev              # Vite only (needs the API already running)
+npm run dev:api          # local Netlify-Function equivalent on :8888
+npm run build            # type-check + production build
+npm run type-check       # src **and** netlify/functions
+npm run lint             # eslint, zero warnings tolerated
+npm run test:functions   # live smoke test against the real upstream APIs
 ```
 
-## Environment Variables
+`npm run dev:full` uses `scripts/dev-api.ts`, a dependency-free local runner for the same handlers —
+`netlify dev` also works if you have the Netlify CLI installed.
 
-| Variable | Required | Description |
-|---|---|---|
-| `VITE_TINYFISH_API_KEY` | No (demo works without it) | Key from [agent.tinyfish.ai/api-keys](https://agent.tinyfish.ai/api-keys). Enables live Search + Fetch. |
-| `VITE_API_BASE_URL` | No | Backend base URL, defaults to `/api`. |
-| `VITE_ENVIRONMENT` | No | App environment label. |
+## Deploying to Netlify
 
-> Never commit `.env.local` — it is gitignored. Set `VITE_TINYFISH_API_KEY` in the Netlify dashboard for production.
+1. Push the repo, then **Add new site → Import an existing project → GitHub** and pick
+   `abhiraj-ops/ecopulse-ai`.
+2. Build settings come from `netlify.toml`:
+   - command `npm run build`, publish `dist`
+   - functions directory `netlify/functions`, esbuild bundler
+3. Add your environment variables under **Site settings → Environment variables**.
+4. Deploy. `/api/*` is rewritten to the functions before the SPA fallback, so routing works as-is.
 
-## TinyFish API Reference
+## Architecture
 
-```bash
-# Search — ranked live results + snippets
-curl "https://api.search.tinyfish.ai?query=delhi+air+quality+emergency" \
-  -H "X-API-Key: $TINYFISH_API_KEY"
+```
+netlify/functions/
+├── alerts.ts              # GET /api/alerts — aggregates + normalizes + caches 5 min
+├── agent.ts               # POST /api/agent — TinyFish search → fetch → classify
+└── _shared/
+    ├── core.ts            # schema, severity rules, TTL cache, stale fallback, region mapping
+    ├── usgs.ts            # earthquake GeoJSON  → normalized alerts
+    ├── gdacs.ts           # disaster RSS        → normalized alerts
+    ├── openmeteo.ts       # weather             → normalized alerts (thresholds)
+    ├── openaq.ts          # air quality         → normalized alerts (needs key)
+    └── fires.ts           # fire hotspots       → normalized alerts (needs key)
 
-# Fetch — JS-rendered pages → clean markdown
-curl -X POST https://api.fetch.tinyfish.ai \
-  -H "X-API-Key: $TINYFISH_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"urls": ["https://example.com/alert"], "format": "markdown", "ttl": 0}'
+src/
+├── App.tsx                # composition + section layout
+├── api/client.ts          # typed fetch wrappers, error types
+├── hooks/
+│   ├── useEcoData.ts      # fetch state, region↔URL sync, filtering, agent runner
+│   └── useTheme.ts        # 4 themes + localStorage persistence
+├── components/            # Navbar, Hero, HazardMap, AlertFeed, StatCards,
+│                          # AgentPanel, TriageTable, DetailsPanel, ThemeSwitcher
+└── lib/                   # severity/format helpers, layer definitions
 ```
 
-Docs: [Search API](https://docs.tinyfish.ai/search-api) · [Fetch API](https://docs.tinyfish.ai/fetch-api)
+### Normalized alert schema
+
+Every source is mapped to this single shape, so the client never branches on provider:
+
+```ts
+interface Alert {
+  id: string;
+  type: 'earthquake' | 'weather' | 'air_quality' | 'fire' | 'flood' | 'storm' | 'news';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  region: string;      // "Delhi-NCR" | "Mumbai" | "Chennai" | "Global"
+  regionId: string;
+  lat: number;
+  lng: number;
+  timestamp: string;   // ISO 8601
+  source: string;
+  sourceUrl: string | null;
+  summary: string;
+  metrics?: Record<string, number | string>;
+  aiGenerated?: boolean;   // true for TinyFish agent results
+}
+```
+
+### Honest failure behaviour
+
+- **Upstream fails** → the function serves the last-known-good copy for that source and flags the response
+  `degraded`; the UI shows *"showing the last successful response"*.
+- **Key missing** → that source reports `missing_key`, renders as *"Key needed"*, and contributes nothing.
+- **Everything down** → an explicit *"Data unavailable"* panel. **No alert is ever invented to fill a gap.**
+
+## Features
+
+- **Live Command Center** — Leaflet + OpenStreetMap tiles, severity-coloured markers, marker clustering at
+  low zoom, per-hazard layer toggles, legend with live counts.
+- **Region filters** — Global / Delhi-NCR / Mumbai / Chennai update the map, the stats and the alert list, and
+  are written to the URL (`?region=delhi`) so a filtered view is shareable.
+- **LIVE badge** — reflects real fetch status (`LIVE` / `DEGRADED` / `OFFLINE`) and the actual last-updated
+  time, not a decorative dot.
+- **TinyFish agent** — a real server-side scrape: live search → markdown fetch → severity classification,
+  with per-stage progress and honest error reporting.
+- **AI Triage Log** — sortable, filterable, searchable table with severity and type filters, CSV export and
+  pagination. AI-generated rows are labelled.
+- **Details panel** — click any map marker or feed row for source, time, severity, measurements and a link to
+  the original report.
+- **4 themes** — Midnight, Aurora, Frost, Graphite. Applied before first paint (no flash), persisted to
+  `localStorage`, `prefers-color-scheme` aware, full keyboard + ARIA support.
+
+## Accessibility & performance
+
+- WCAG AA contrast in all four themes; `prefers-reduced-motion` disables the animated feed, ping effects and
+  grain overlay.
+- `backdrop-filter: blur(16px) saturate(140%)` glass surfaces with an `@supports not` fallback.
+- Design tokens for spacing (4/8/12/16/24) and radii (8/12/16/24); transitions kept to 150–250 ms.
+- Skeleton loaders, empty states and error states throughout; responsive from 360 px up with a collapsing nav.
 
 ## Roadmap
 
 - [ ] Multilingual SOS triage (Hindi, Marathi, Tamil auto-translation + geo-resolution)
-- [ ] 48-hour predictive risk forecast with pre-positioned asset dispatch
-- [ ] Open civic API — webhooks + SMS fallback for municipalities
+- [ ] 48-hour predictive risk forecast driving pre-positioned assets
+- [ ] Open civic API — webhooks with SMS fallback for low-connectivity districts
 
 ## License
 
