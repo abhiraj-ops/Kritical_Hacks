@@ -385,6 +385,147 @@ class TinyFishWebAgent:
         return steps[:12]
 
     # ------------------------------------------------------------------
+    # Fallback vulnerability extraction
+    # ------------------------------------------------------------------
+    #: "CVSS 3.1: 10.0 CRITICAL", "9.8 CRITICAL", "Base Score 7.5 HIGH"
+    CVSS_PATTERN = re.compile(
+        r"(?:\bCVSS\b[^0-9]{0,24}?|\bBase\s+Score\b[^0-9]{0,12})?(\d{1,2}\.\d)\s*"
+        r"[-–—:]?\s*\b(CRITICAL|HIGH|MEDIUM|MODERATE|LOW|NONE)\b",
+        re.IGNORECASE,
+    )
+    CWE_PATTERN = re.compile(r"\bCWE[- ]?(\d{1,4})\b", re.IGNORECASE)
+    VERSION_PATTERN = re.compile(
+        r"((?:versions?|releases?)\s+[\d.]+\s*(?:through|to|-|–)\s*[\d.]+|"
+        r"(?:before|prior to|earlier than)\s+[\d.]+|"
+        r"[\d.]+\s*(?:and\s+earlier|and\s+prior))",
+        re.IGNORECASE,
+    )
+    DESC_TRIGGER = re.compile(
+        r"\b(vulnerab|allows?|permit|attack|exploit|injection|overflow|traversal|"
+        r"deserialis|deserializ|bypass|leak|disclos|rce|remote code)\w*",
+        re.IGNORECASE,
+    )
+
+    SEVERITY_FROM_SCORE = [
+        (9.0, "CRITICAL"),
+        (7.0, "HIGH"),
+        (4.0, "MEDIUM"),
+        (0.1, "LOW"),
+        (0.0, "INFO"),
+    ]
+
+    def _extract_vulnerabilities_from_pages(
+        self, pages: list[dict[str, Any]], cve_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        """Build vulnerability records from raw advisory pages.
+
+        This is what makes the Search + Fetch fallback a first-class path
+        rather than a degraded one. Without it, an agent timeout produced
+        zero findings even though the fetched pages described the
+        vulnerability in plain text.
+        """
+        records: list[dict[str, Any]] = []
+
+        for page in pages:
+            text = page.get("text", "")
+            if not text:
+                continue
+            title = (page.get("title") or "").strip()
+            if not title or len(title) < 4:
+                continue
+
+            page_cves = self._extract_cves(text)
+            if not page_cves and not self.CVE_PATTERN.search(text):
+                # Still worth reporting a page that talks about vulnerabilities.
+                if not self.DESC_TRIGGER.search(text):
+                    continue
+
+            # --- severity from a CVSS score if present --------------------
+            severity = "MEDIUM"
+            score_value: float | None = None
+            match = self.CVSS_PATTERN.search(text)
+            if match:
+                try:
+                    score_value = float(match.group(1))
+                except ValueError:
+                    score_value = None
+                severity = match.group(2).upper()
+                if severity == "MODERATE":
+                    severity = "MEDIUM"
+                if severity == "NONE":
+                    severity = "INFO"
+            else:
+                for threshold, label in self.SEVERITY_FROM_SCORE:
+                    if any(
+                        word in text.upper()[:4000]
+                        for word in (label,)
+                    ) and label != "INFO":
+                        severity = label
+                        break
+
+            # --- CWE ------------------------------------------------------
+            cwe_match = self.CWE_PATTERN.search(text)
+            cwe = f"CWE-{cwe_match.group(1)}" if cwe_match else None
+
+            # --- affected versions ---------------------------------------
+            version_match = self.VERSION_PATTERN.search(text)
+            affected = version_match.group(1).strip() if version_match else None
+
+            # --- description + verbatim evidence -------------------------
+            description, evidence = self._extract_description(text, page_cves)
+
+            if not description and not cwe and not page_cves:
+                continue
+
+            records.append(
+                {
+                    "title": title[:200],
+                    "severity": severity,
+                    "cwe": cwe,
+                    "description": description,
+                    "affected_versions": affected or "",
+                    "evidence_quote": evidence or "",
+                    "cve_ids": page_cves,
+                    "_source": page.get("url", ""),
+                    "_score": score_value,
+                }
+            )
+
+        # Prefer pages that named a CVE, then pages with a CVSS score.
+        records.sort(
+            key=lambda r: (len(r.get("cve_ids") or []), r.get("_score") or 0.0),
+            reverse=True,
+        )
+        seen: set[str] = set()
+        unique: list[dict[str, Any]] = []
+        for record in records:
+            key = re.sub(r"\W+", "", record["title"].lower())[:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(record)
+        return unique[:10]
+
+    @staticmethod
+    def _extract_description(text: str, cve_ids: list[str]) -> tuple[str, str]:
+        """Return (description, verbatim evidence quote) from advisory prose."""
+        paragraphs = [
+            p.strip()
+            for p in re.split(r"\n\s*\n", text)
+            if 80 <= len(p.strip()) <= 1200
+        ]
+        for paragraph in paragraphs:
+            if any(cve in paragraph.upper() for cve in cve_ids) or TinyFishWebAgent.DESC_TRIGGER.search(
+                paragraph
+            ):
+                # Strip markdown noise but keep the sentence verbatim.
+                cleaned = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", paragraph)
+                cleaned = re.sub(r"[#*_`>]+", "", cleaned)
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                return cleaned[:900], cleaned[:400]
+        return "", ""
+
+    # ------------------------------------------------------------------
     # Demo-mode payload
     # ------------------------------------------------------------------
     def _mock_intel(self, target_url: str) -> ExploitIntel:
@@ -467,6 +608,37 @@ class TinyFishWebAgent:
     # ------------------------------------------------------------------
     # Public API — streaming
     # ------------------------------------------------------------------
+    async def _gather_web_sources(
+        self, target_url: str, cve_id: str | None, focus: str | None
+    ) -> tuple[list[str], list[dict[str, Any]], int]:
+        """Discover and fetch candidate sources for a target.
+
+        Runs concurrently with the agent so the fallback data is already
+        gathered the instant the agent exceeds its budget. The total scan
+        time becomes max(agent, fetch) rather than agent + fetch.
+        """
+        queries = [f"{target_url} security advisory vulnerability"]
+        if cve_id:
+            queries.insert(0, f"{cve_id} exploit proof of concept")
+        if focus:
+            queries.append(f"{target_url} {focus} vulnerability")
+
+        all_urls: list[str] = []
+        sources_searched = 0
+        for query in queries[:3]:
+            hits = await self._search(query)
+            sources_searched += len(hits)
+            for hit in hits:
+                if hit["url"] not in all_urls:
+                    all_urls.append(hit["url"])
+
+        # Always include the target itself.
+        if target_url not in all_urls:
+            all_urls.insert(0, target_url)
+
+        pages = await self._fetch_pages(all_urls[:10])
+        return all_urls, pages, sources_searched
+
     async def stream_crawl(
         self,
         target_url: str,
@@ -479,6 +651,11 @@ class TinyFishWebAgent:
         wallet, timeout, account restriction) we transparently fall back to
         Search + Fetch, which are on the free tier and still return real,
         rendered, live-web data.
+
+        The two paths run **concurrently**: the fallback is gathered in the
+        background while the agent browses, so an agent timeout costs no
+        extra wall-clock time and the fallback produces a full assessment
+        rather than an empty one.
         """
         started = asyncio.get_event_loop().time()
 
@@ -502,6 +679,15 @@ class TinyFishWebAgent:
                 data={"intel": intel.to_dict(), "elapsed": asyncio.get_event_loop().time() - started},
             )
             return
+
+        # Make sure the shared client exists before the task starts, so the
+        # two coroutines cannot race to create it.
+        await self._get_client()
+
+        # Start the fallback discovery in the background, concurrently.
+        fetch_task = asyncio.create_task(
+            self._gather_web_sources(target_url, cve_id, focus)
+        )
 
         # --- 1. Agent API -------------------------------------------------
         agent_payload: dict[str, Any] | None = None
@@ -571,32 +757,14 @@ class TinyFishWebAgent:
                 str(s) for s in (agent_payload.get("reproduction_steps") or [])
             ]
 
-        queries = [f"{target_url} security advisory vulnerability"]
-        if cve_id:
-            queries.insert(0, f"{cve_id} exploit proof of concept")
-        if focus:
-            queries.append(f"{target_url} {focus} vulnerability")
-
-        all_urls: list[str] = []
-        for query in queries[:3]:
-            hits = await self._search(query)
-            intel.sources_searched += len(hits)
-            for hit in hits:
-                if hit["url"] not in all_urls:
-                    all_urls.append(hit["url"])
-            await asyncio.sleep(0.05)
-
-        # Always include the target itself.
-        if target_url not in all_urls:
-            all_urls.insert(0, target_url)
+        all_urls, pages, sources_searched = await fetch_task
+        intel.sources_searched = sources_searched
+        intel.pages_fetched = len(pages)
 
         yield AgentEvent(
             type="stage", step="discover", level=EventLevel.agent,
             message=f"Discovered {len(all_urls)} candidate sources across the live web.",
         )
-
-        pages = await self._fetch_pages(all_urls[:10])
-        intel.pages_fetched = len(pages)
 
         for page in pages:
             yield AgentEvent(
@@ -611,6 +779,14 @@ class TinyFishWebAgent:
             intel.reproduction_steps.extend(self._extract_steps(page.get("text", "")))
             if page.get("url") and page["url"] not in intel.references:
                 intel.references.append(page["url"])
+
+        # The agent is the richer source, but when it times out the fallback
+        # must still produce vulnerability records — otherwise an agent
+        # timeout silently produced a 0/100 "nothing found" assessment.
+        if not intel.vulnerabilities:
+            intel.vulnerabilities = self._extract_vulnerabilities_from_pages(
+                pages, intel.cve_ids
+            )
 
         # De-duplicate while preserving order.
         seen: set[str] = set()
