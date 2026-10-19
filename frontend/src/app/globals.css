@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #05070d;
+  --panel: #0b0f18;
+  --panel-2: #0f1522;
+  --line: #1c2534;
+  --ink: #e2e8f0;
+  --muted: #64748b;
+  --accent: #34d399;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Faint grid + vignette backdrop for the SOC look. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(52, 211, 153, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(52, 211, 153, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Terminal specifics */
+.terminal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.terminal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 999px;
+}
+
+.scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(52, 211, 153, 0.055) 50%,
+    transparent 100%
+  );
+  height: 40%;
+  animation: scanLine 2.6s linear infinite;
+}
+
+@keyframes scanLine {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(350%);
+  }
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Diff viewer */
+.diff-line {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.diff-add {
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+}
+.diff-remove {
+  background: rgba(251, 113, 133, 0.1);
+  color: #fda4af;
+}
+.diff-hunk {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline,
+  .animate-pulse-dot {
+    animation: none !important;
+  }
+}
