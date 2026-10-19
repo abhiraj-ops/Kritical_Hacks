@@ -227,6 +227,19 @@ API docs: <http://localhost:8000/docs>
 > ```
 > Without it the service still works; `engine` simply reports `ast`.
 
+### Tests
+
+```bash
+cd backend
+python -m unittest discover -s tests -v      # offline, ~0.01s
+python smoke_test.py "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"   # live end-to-end
+```
+
+The unit tests run offline against a captured NVD-shaped fixture, so the fallback
+extraction is protected by CI rather than only by live runs. The smoke test drives the
+real SSE pipeline against the live TinyFish API and prints the agent trace, the
+assessment and the generated patch.
+
 ### 2. Frontend
 
 ```bash
