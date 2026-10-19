@@ -271,7 +271,21 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Point it at a different backend with `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`).
+Point it at a different backend with `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8000`).
+
+### 3. Docker (optional)
+
+```bash
+cp backend/.env.example backend/.env     # add your TINYFISH_API_KEY
+docker compose up --build
+```
+
+Backend on `:8000`, frontend on `:3000`.
+
+### 4. CI
+
+`.github/workflows/ci.yml` runs the backend unit tests, the frontend build and type check, and
+a **secret scan** that fails the build if a TinyFish API key is ever committed.
 
 ---
 
