@@ -94,6 +94,29 @@ Three details that make the fallback a **first-class** path rather than a degrad
 
 **A scan never returns empty.**
 
+### Why there is an NVD enrichment step
+
+Scraping advisory HTML turned out to be **inherently brittle**: the same page renders
+differently between fetches, so a regex matching a CVSS score on one run matched a table of
+contents on the next. Two consecutive runs of the same target disagreed on severity, CWE and even
+the final risk score.
+
+The fix is to stop asking HTML for structured facts. The **NVD JSON API** returns the same
+severity, CVSS base score, CWE and affected-version ranges every time, so it is used to
+*enrich* whatever the crawl discovered:
+
+```python
+GET https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-44228
+→ severity: CRITICAL   baseScore: 10.0   cwe: CWE-20
+  affected: "2.0.1 through 2.3.1; 2.4.0 through 2.12.2; 2.13.0 through 2.15.0; ..."
+```
+
+This is **enrichment, not replacement**. TinyFish still does the discovery and the context — the
+agent browses the target, Search finds the advisories and PoC pages, Fetch pulls the code blocks
+and diffs. The NVD record supplies the authoritative fields that HTML scraping cannot promise.
+Findings are merged by CVE identity, most authoritative first, so a CVE named in the target URL
+wins.
+
 ---
 
 ## 🧠 ML & AI layer
