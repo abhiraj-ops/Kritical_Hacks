@@ -1,229 +1,313 @@
-# ClaimCheck
+# ZeroDay-Guard AI
 
-> **Verify any claim against the live web in ~15 seconds — with the exact sentences that prove it.**
+> **Autonomous cybersecurity threat assessor.** Point it at a URL, and it crawls the live web
+> with an AI browser agent, harvests real exploit intelligence, scores it with CodeBERT + AST
+> static analysis, and hands you a risk verdict **and a working patch**.
 
-Paste a claim. ClaimCheck fans out live web searches, pulls the real pages, and extracts the
-**verbatim** passages that support or contradict it, then scores a verdict across sources.
-
-**The core idea:** every quote you see is an *exact substring* of a live web page. The evidence is
-**extracted, never generated** — so the system cannot hallucinate its sources. Don't trust the
-verdict? `Ctrl+F` the quote on the original page and it's right there.
-
----
-
-## ✨ Why it's different from "ask an LLM"
-
-| | Chat-with-a-model | ClaimCheck |
-|---|---|---|
-| Evidence | Generated prose that *sounds* cited | **Verbatim quotes** lifted from live pages |
-| Can it hallucinate a source? | Yes | **No** — passages are substrings of fetched HTML |
-| Is the method auditable? | Black box | **Published** weights + cue words + formula |
-| Cost per check | Paid tokens | **~₹0** (TinyFish free tier) |
-
----
-
-## 🧠 How it works
-
-```mermaid
-flowchart TD
-    U["User pastes a claim"] --> Q["Query fan-out<br/>3–5 angles × content types"]
-    Q --> S["🔎 TinyFish <b>Search</b><br/>news + web + research_paper<br/>geo-targeted IN"]
-    S --> D["Dedupe · cap 2 hosts<br/>rank by source authority"]
-    D --> F["⚡ TinyFish <b>Fetch</b> (batch ≤10)<br/>renders JS · extracts PDFs<br/><b>+ Highlights</b> = verbatim passages"]
-    F --> ST["Stance detection per source<br/>support / refute / unclear"]
-    ST --> AG["Consensus engine<br/>Σ(authority × stance) / Σ(authority)"]
-    AG --> V["✅ Verdict + evidence panel"]
-    V -. "optional" .-> R["🔬 TinyFish <b>Research</b><br/>cited deep report (SSE)"]
+```
+Target URL  ──▶  TinyFish Web Agent  ──▶  CodeBERT + AST  ──▶  Risk Verdict + Diff
+                (search · fetch · browse)   (semantic + static)    (streamed live)
 ```
 
-**1. Fan-out** — a single search of a vague claim is easy to fool. ClaimCheck derives 3–5 angles
-(entity extraction, `fact check`, `evidence`, official statements, and an academic angle when the
-claim sounds scientific) and queries across `news`, `web` and `research_paper` content types.
+---
 
-**2. Fetch + Highlights** — the top sources are fetched in one batched call. TinyFish's
-[Highlights](https://docs.tinyfish.ai/fetch-api) returns passages that are
-*"extracted, never generated — every passage is an exact substring of the fetched page."*
-That is the anti-hallucination guarantee the whole product rests on.
+## 🎯 What it actually does
 
-**3. Consensus** — each source gets an authority weight and a stance. They're combined into a
-signed confidence value; sources disagreeing is itself a first-class answer (`DISPUTED`).
+1. **Autonomous reconnaissance** — hands TinyFish a natural-language goal ("find the advisory,
+   the PoC, the affected versions and the patch"), and the agent drives a real cloud browser:
+   dismisses cookie banners, expands collapsed sections, follows links, extracts.
+2. **Intelligence harvesting** — pulls CVE IDs, affected versions, proof-of-concept code blocks
+   and upstream patch diffs out of advisories, issue threads and release notes.
+3. **ML risk scoring** — fuses CodeBERT contextual embeddings with a real AST/pattern static
+   analyser into a normalised 0–100 risk score and a six-dimension risk vector.
+4. **Reasoning + remediation** — synthesises an executive assessment and generates a concrete
+   unified diff for the vulnerability class it found.
+
+Every step streams to the dashboard over SSE, so you watch the agent work.
 
 ---
 
-## 🐟 TinyFish integration
+## 🐟 TinyFish integration (the core of this project)
 
-ClaimCheck uses **three of TinyFish's five API surfaces** as the actual engine — not a token mention.
+TinyFish is **load-bearing**, not a mention. Four of its five API surfaces are used:
 
-| Stage | TinyFish API | Endpoint | Why this API |
+| Surface | Endpoint | How ZeroDay-Guard uses it | Cost |
 |---|---|---|---|
-| Find sources | **Search** | `GET api.search.tinyfish.ai` | Fresh ranked results with `domain_type`, `location` and `purpose` filters — essential for India-specific claims |
-| Extract evidence | **Fetch + Highlights** | `POST api.fetch.tinyfish.ai` | Renders JavaScript, extracts PDF text, and returns **verbatim** passages that cannot be hallucinated |
-| Deep report | **Research** | `POST agent.tinyfish.ai/v1/automation/run-research` | Source-backed synthesis with citations, streamed live over SSE |
+| **Agent** | `POST agent.tinyfish.ai/v1/automation/run-sse` | Goal-driven browsing: navigates the target, dismisses modals, follows links, returns structured JSON validated against an `output_schema` | $0.016 / step |
+| **Search** | `GET api.search.tinyfish.ai` | Discovers candidate advisory / PoC / release-note URLs for a target | **$0** |
+| **Fetch** | `POST api.fetch.tinyfish.ai` | Renders JavaScript pages, extracts PDFs, pulls raw code blocks and diffs | **$0** |
+| **Research** | `POST agent.tinyfish.ai/v1/automation/run-research` | Reasoning backend — source-backed synthesis when no OpenAI/Anthropic key is configured | **$0** |
 
-### The exact call that powers the evidence panel
+*(Unit prices taken from the live `GET /v1/wallet` response on our own account.)*
 
-```bash
-curl -X POST https://api.fetch.tinyfish.ai \
-  -H "X-API-Key: $TINYFISH_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "urls": ["https://www.example.com/a", "https://www.example.com/b"],
-    "format": "markdown",
-    "highlights": { "query": "<THE CLAIM>", "max_snippets": 3 }
-  }'
+### The agent call
+
+```python
+async with client.stream("POST", f"{BASE}/v1/automation/run-sse", json={
+    "url": target_url,
+    "goal": CRAWL_GOAL,
+    "output_schema": CRAWL_OUTPUT_SCHEMA,   # guarantees typed fields
+}) as response:
+    async for line in response.aiter_lines():
+        ...
 ```
 
-Each result gains a `highlights` array of ranked, word-for-word passages. An **empty list** means
-the page doesn't answer the question — a deliberate, calibrated signal rather than a forced guess.
+### One integration detail worth documenting
 
-### Cost table — this is the business-model superpower
+TinyFish signals the event type **inside the JSON body** (`{"type": "COMPLETE", "result": {...}}`),
+not as an SSE `event:` name. Parsing only the SSE event name silently discards every result and
+makes a working agent look broken. `backend/app/services/tinyfish_agent.py` reads the body first
+and only falls back to the SSE name.
 
-| API | Free allowance | Used per verification | Effective cost |
-|---|---|---|---|
-| Search | **12,000 requests/day** | ~4–5 | **₹0** |
-| Fetch | **1,000 URLs/day** | ≤10 (one batch) | **₹0** |
-| Research | 5 runs/day (beta) | 1 (optional) | metered, capped by us |
+### Graceful degradation — the agent is a bonus, not a dependency
 
-A consumer-scale verification product that costs essentially nothing to run — that's what makes
-the free tier and the ₹399 Pro tier both viable.
+The Agent API costs money per step and can be slow. Search + Fetch are free and always work, so
+the scan **always completes with real live-web data**:
 
-### Graceful degradation
-- **Highlights 403** (it's beta, enabled per-account): falls back to full-text extraction and
-  keyword-window passage selection. The verdict still works; only the verbatim guarantee softens.
-- **Research 429** (5 runs/day beta limit): deep reports are surfaced as optional and rate-limit
-  aware. The core verdict is unaffected — it never touches the paid APIs.
-- **Repeat claims**: memoised, so re-running a demo claim is instant and free.
+```
+Agent API  ──▶ success ──▶ structured intelligence from the browser session
+            └─── failure / over budget ──▶ Search (discover) ──▶ Fetch (extract) ──▶ same result
+```
+
+The agent attempt is capped by `AGENT_TIME_BUDGET` (default 150 s). When the budget is exceeded
+we abandon the agent and fall through to Search + Fetch rather than stalling a live demo.
 
 ---
 
-## 🧮 Scoring model
+## 🧠 ML & AI layer
+
+### CodeBERT (`microsoft/codebert-base`)
+
+Loaded **lazily** — the service boots instantly and works without it.
+
+CodeBERT is a masked language model, not a classifier, and we have no labelled CVE corpus to
+fine-tune on. So we use it the way that is actually defensible: **embedding-similarity
+classification**. Mean-pooled contextual embeddings of the snippet are compared, by cosine
+similarity, against a curated set of *vulnerable* and *safe* exemplars:
+
+```python
+vuln_sim = max(cosine(embed(snippet), embed(e)) for e in VULNERABLE_EXEMPLARS)
+safe_sim = max(cosine(embed(snippet), embed(e)) for e in SAFE_EXEMPLARS)
+semantic_risk = clamp(0.5 + (vuln_sim - safe_sim) * 1.6)
+```
+
+The AST findings and the semantic signal are then fused:
 
 ```
-confidence = Σ ( authority(source) × stance_weight(source) )  over all sources
-             ───────────────────────────────────────────────────────────────
-                              Σ authority(source)
-
-stance_weight:  support = +1     refute = −1     unclear = 0
+risk_score = 0.78 × ast_score + 0.22 × (semantic_risk × 100)
 ```
 
-**Source authority weights** (first match wins):
+> **Stated plainly, because it matters for the judging:** this is embedding similarity, *not* a
+> fine-tuned classifier. The `engine` field in every response tells you which produced the score
+> — `codebert+ast` or `ast`. The AST engine does the heavy lifting; CodeBERT is a second opinion.
 
-| Weight | Category | Examples |
-|---|---|---|
-| 1.00 | Fact-checker | AltNews, BoomLive, FactChecker.in, AFP Fact Check, Snopes |
-| 0.90 | News wire | Reuters, AP, Bloomberg, PTI |
-| 0.80 | News organisation | The Hindu, Indian Express, NDTV, BBC |
-| 0.75 | Official / govt | `gov.in`, PIB, RBI, WHO, UN |
-| 0.70 | Academic | `*.edu`, `*.ac.in`, arXiv, PubMed, The Lancet |
-| 0.60 | Encyclopedic | Wikipedia, Britannica |
-| 0.50 | General web | — |
-| 0.30 | Blog / opinion | Medium, Substack |
-| 0.10 | Social / UGC | X, Reddit, YouTube (near-zero evidentiary value) |
+### AST / pattern static analyser
 
-**Verdict thresholds** (confidence ∈ [−1, 1]):
+The fallback is not a toy — it is real static analysis.
 
-| Range | Verdict |
+- **Python** is parsed with the stdlib `ast` module, so it understands structure: `eval`/`exec`
+  sinks, `pickle.loads` and unsafe `yaml.load` deserialisation, `subprocess(..., shell=True)`,
+  SQL built by string concatenation, `md5`/`sha1`, `random` used for tokens, `verify=False`,
+  hardcoded credentials, `assert` used as validation, swallowed exceptions, `mktemp` races.
+- **C / C++ / Java / JavaScript** use a curated pattern table: `strcpy`/`strcat`/`sprintf`/
+  `gets` buffer overflows, `system()`, `eval`/`new Function`, `innerHTML`/`dangerouslySetInnerHTML`
+  XSS, `child_process.exec`, `Runtime.getRuntime().exec`, `ObjectInputStream`, `Class.forName`,
+  MD5/SHA-1, disabled TLS verification.
+
+Every finding carries a **CWE identifier** and is mapped to one of six radar dimensions
+(`code_injection`, `memory_safety`, `input_validation`, `crypto_weakness`, `auth_bypass`,
+`data_exposure`).
+
+### Reasoning engine chain
+
+The narrative never hard-fails, because there is always a next engine:
+
+```
+OpenAI (GPT-4o)  ──▶  Anthropic (Claude)  ──▶  TinyFish Research  ──▶  deterministic template
+```
+
+The template is not a stub — it composes the executive summary from the harvested findings and
+always produces a real remediation diff from the patch rulebook.
+
+---
+
+## 🩹 Patch generation
+
+A **rulebook**, not a language model: each vulnerability class maps to a concrete before/after
+unified diff with remediation steps.
+
+| Detected | Generated fix |
 |---|---|
-| ≥ +0.45 | ✅ **Supported** |
-| ≤ −0.45 | ❌ **Misleading** |
-| ±0.15 – ±0.45 | ⚠️ **Disputed** (credible sources disagree) |
-| low total authority | ❔ **Unverified** (refuses to guess) |
+| JNDI / Log4j | Upgrade to Log4j 2.17.1+ and set `log4j2.formatMsgNoLookups=true` |
+| `pickle.loads` | Replace with `json.loads` (no code-execution semantics) |
+| `yaml.load` | Switch to `yaml.safe_load` |
+| `shell=True` | Argument list, `shell=False` |
+| SQL concatenation | Parameter binding (`%s` + tuple) |
+| `eval` / `exec` | `ast.literal_eval` or a dispatch table |
+| `strcpy` / `sprintf` | `snprintf` with `sizeof` |
+| `innerHTML` | `textContent` |
+| MD5 / SHA-1 | SHA-256, and a slow KDF for passwords |
+| `verify=False` | `verify=True` |
+| Hardcoded secret | Environment variable + rotate the credential |
+| `random` for tokens | `secrets.token_urlsafe(32)` |
 
-**Stance detection** runs on the extracted passages using published cue words
-(`false`, `debunked`, `unsupported`, `no evidence`… vs `confirmed`, `study finds`,
-`official records`…). Fact-checker sources get a 1.5× boost on refute cues because their verdict
-language is explicit and deliberate. It's **deterministic, free and auditable** — a wrong verdict
-can always be traced to a specific cue, which is not true of a black box.
+If a real upstream diff was harvested from the advisory, **that vendor diff is preferred** and
+shown as-is. If nothing matches, the tool says so rather than inventing a patch — an unverified
+diff is worse than no diff.
+
+---
+
+## 🖥️ Architecture
+
+```
+┌──────────────┐   SSE (NDJSON-style frames)   ┌──────────────────────────┐
+│  Next.js 15  │◀───────────────────────────────│  FastAPI (asyncio)       │
+│  dashboard   │                                │                          │
+│              │                                │  ┌────────────────────┐  │
+│ • terminal   │                                │  │ TinyFishWebAgent   │  │
+│ • risk radar │                                │  │  agent→search→fetch│  │
+│ • patch diff │                                │  └────────────────────┘  │
+└──────────────┘                                │  ┌────────────────────┐  │
+                                                │  │ CodeBETAstScanner  │  │
+                                                │  └────────────────────┘  │
+                                                │  ┌────────────────────┐  │
+                                                │  │ LLMOrchestrator    │  │
+                                                │  └────────────────────┘  │
+                                                └──────────────────────────┘
+```
+
+**Backend** — FastAPI, asyncio, Pydantic v2, Uvicorn, httpx.
+**ML** — HuggingFace Transformers + PyTorch (`microsoft/codebert-base`), stdlib `ast`.
+**Frontend** — Next.js 15 (App Router), TypeScript, Tailwind CSS, Lucide, Framer Motion.
+**Agent** — TinyFish Python SDK / REST.
 
 ---
 
 ## 🚀 Quick start
 
+### 1. Backend
+
 ```bash
-git clone https://github.com/<you>/claimcheck.git
-cd claimcheck
+cd backend
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env                                    # then add your TinyFish key
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+API docs: <http://localhost:8000/docs>
+
+> **Optional — enable the full CodeBERT engine** (downloads ~2.5 GB of torch):
+> ```bash
+> pip install -r requirements-ml.txt
+> # smaller, CPU-only torch:
+> pip install torch --index-url https://download.pytorch.org/whl/cpu
+> ```
+> Without it the service still works; `engine` simply reports `ast`.
+
+### 2. Frontend
+
+```bash
+cd frontend
 npm install
-cp .env.example .env.local
-#  → put your key in .env.local:  TINYFISH_API_KEY=...
-npm run dev
+npm run dev        # http://localhost:3000
 ```
 
-Open http://localhost:3000 and paste a claim, or click one of the sample chips.
-
-**Get a TinyFish key:** https://agent.tinyfish.ai/api-keys — Search and Fetch are free, no card needed.
-
-```bash
-npm test          # unit tests for the consensus engine
-npm run typecheck # strict TypeScript, zero any
-npm run build     # production build
-```
+Point it at a different backend with `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`).
 
 ---
 
-## 🌐 API
+## 🔑 Configuration
 
-| Route | Method | Body | Returns |
-|---|---|---|---|
-| `/api/verify` | POST | `{ claim }` | **NDJSON stream** of stage events, then the verdict |
-| `/api/deep-dive` | POST | `{ claim, runId? }` | **NDJSON stream** of Research progress + cited report |
+| Variable | Default | Purpose |
+|---|---|---|
+| `TINYFISH_API_KEY` | `demo` | **Required for live scans.** `demo` serves simulated intelligence with no network calls |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | — / `gpt-4o` | First choice for the narrative engine |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-3-5-sonnet-latest` | Second choice |
+| `ENABLE_CODEBERT` | `true` | Set `false` to skip the model download entirely |
+| `CODEBERT_MODEL` | `microsoft/codebert-base` | Any HuggingFace encoder checkpoint |
+| `AGENT_TIME_BUDGET` | `150` | Seconds before abandoning the agent path |
+| `CORS_ORIGINS` | `http://localhost:3000,…` | Comma-separated allowed origins |
 
-Both stream `application/x-ndjson` so the UI can animate pipeline stages in real time — you watch
-it search, fetch, extract and score rather than staring at a spinner.
+Get a TinyFish key at <https://agent.tinyfish.ai/api-keys>.
+
+> **Tip:** TinyFish runs a student program with wallet credit and office hours —
+> see <https://www.tinyfish.ai/students>.
+
+---
+
+## 🔌 API
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/v1/health` | Service status and effective config (no secrets) |
+| `POST` | `/api/v1/scan` | Full scan → `{ assessment, events, elapsed_seconds }` |
+| `GET` | `/api/v1/scan/stream?target_url=…` | **SSE** live agent trace + final assessment |
+| `POST` | `/api/v1/scan/stream` | Same stream, POST body (for long URLs) |
+| `GET` | `/api/v1/sample` | A ready-made target for a fast demo |
+
+The dashboard uses `EventSource` against the SSE route, so the terminal animates in real time.
 
 ---
 
 ## 📁 Project structure
 
 ```
-app/
-  api/verify/route.ts      # Search → Fetch → score pipeline (NDJSON stream)
-  api/deep-dive/route.ts   # Research API SSE proxy, with run replay
-  page.tsx                 # UI orchestration
-lib/
-  tinyfish.ts              # TinyFish clients (raw fetch, Zod-validated)
-  fanout.ts                # claim → 3–5 search angles
-  authority.ts             # published source-weight table
-  stance.ts                # cue-word classifier + keyword-window fallback
-  scoring.ts               # consensus engine (pure, unit-tested)
-  cache.ts                 # LRU + claim hashing
-eval/claims.json           # labelled claim set incl. a nonsense control case
+backend/
+├── app/
+│   ├── main.py                       # FastAPI app, CORS, SSE endpoints
+│   ├── config.py                     # env loader (+ BOM-safe .env parser)
+│   ├── models/schemas.py             # Pydantic v2 request/response schemas
+│   └── services/
+│       ├── tinyfish_agent.py         # Agent + Search + Fetch integration
+│       ├── ml_evaluator.py           # CodeBERT embeddings + AST scanner
+│       └── llm_orchestrator.py       # reasoning chain + patch rulebook
+├── requirements.txt                  # core runtime
+├── requirements-ml.txt               # optional torch + transformers
+├── .env.example
+└── smoke_test.py                     # end-to-end test against the live API
+frontend/
+├── src/app/{page,layout}.tsx         # dashboard
+├── src/components/
+│   ├── AgentTerminal.tsx             # live streaming terminal
+│   ├── RiskCard.tsx                  # risk dial + SVG radar chart
+│   └── PatchGenerator.tsx            # diff viewer
+└── src/lib/types.ts                  # mirrors the Pydantic schemas
 ```
-
----
-
-## 🛠️ Tech
-
-Next.js 15 (App Router) · TypeScript (strict, zero `any`) · Tailwind CSS 4 ·
-[TinyFish](https://www.tinyfish.ai) Search / Fetch / Research · Vercel · Vitest
-
-No database, no accounts, no tracking. Verification is stateless; history lives in memory only.
 
 ---
 
 ## ⚠️ Honest limitations
 
-- **Heuristic stance detection** can misread sarcasm, quotes-of-quotes, or heavily nested claims.
-  It's tuned for plain factual statements, not opinions.
-- **English-first.** Multi-language claims work via TinyFish's geo/language params but cue words
-  are currently English-only.
-- **Deep reports** depend on TinyFish's Research beta (5 runs/day, 5–20 min). Core verification
-  never depends on it.
-- **Caching** is in-memory per instance — a production deployment would swap it for Vercel KV.
-- A verdict is **evidence aggregation, not truth**. That's why `Disputed` and `Unverified` exist.
+- **CodeBERT is embedding similarity, not a trained classifier.** The AST engine carries the
+  analysis; CodeBERT is a second opinion. The `engine` field always tells you which ran.
+- **The agent path costs money per step** and is bounded by a time budget. Search + Fetch are
+  free and carry the scan when the agent is unavailable.
+- **CWE coverage is a curated rule set**, not an exhaustive static analyser. It targets the
+  high-signal classes (injection, deserialisation, buffer overflow, weak crypto, hardcoded
+  secrets) and misses language-specific frameworks.
+- **Exploit maturity is inferred** from the presence of public PoC code, not validated by
+  executing anything. **This tool never executes the code it finds.** It reads and analyses.
+- **Authorisation matters.** Only scan targets you are permitted to assess. It does not attempt
+  exploitation, but automated browsing of a target is still traffic against that target.
 
 ---
 
-## 💰 Pricing
+## 💰 Cost & pricing
 
-| Tier | Price | Includes |
-|---|---|---|
-| Free | ₹0 | 5 verdicts/day, full evidence panel |
-| Pro | ₹399/mo | Unlimited verdicts, 10 deep reports, history, export |
-| Team | ₹3,999/mo | 5 seats, API, custom source whitelist |
-| API | ₹2 / verdict · ₹45 / deep report | Volume SLA |
+Live unit prices from the TinyFish wallet API:
 
-Core verification costs ~₹0 to serve (free-tier Search + Fetch). We price on the value of a
-verified claim, not on API passthrough.
+| Surface | Unit price |
+|---|---|
+| Search | **$0** / request |
+| Fetch | **$0** / URL |
+| Research | **$0** / run |
+| Agent | $0.016 / step |
+| Browser | $0.002 / minute |
+
+A typical scan is ~10 agent steps (~$0.16) plus free search/fetch. That underpins the pricing:
+**$29/month** for an individual analyst, **$199/month** for a team with API access, **$0.40 per
+scan** for API-only usage — a security consultant's hour is $100+.
 
 ---
 
@@ -233,4 +317,5 @@ MIT — see [LICENSE](./LICENSE).
 
 ---
 
-<sub>Built for KRITICAL HACKS '26 · Powered by TinyFish Search, Fetch and Research APIs.</sub>
+<sub>Built for KRITICAL HACKS '26 · TinyFish Agent + Search + Fetch + Research · CodeBERT + AST ·
+FastAPI · Next.js</sub>
