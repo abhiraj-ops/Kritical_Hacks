@@ -339,10 +339,38 @@ class TinyFishWebAgent:
     # Static analysers over fetched markdown
     # ------------------------------------------------------------------
     def _extract_code_blocks(self, page: dict[str, Any]) -> list[dict[str, Any]]:
-        """Pull fenced code blocks out of a fetched page, verbatim."""
+        """Pull code out of a fetched page, verbatim.
+
+        Two shapes are handled: fenced blocks in markdown, and raw source
+        files (raw.githubusercontent.com, *.py, *.js …) where the whole body
+        IS the code.
+        """
         blocks: list[dict[str, Any]] = []
         text = page.get("text", "")
         limit = self.settings.TINYFISH_MAX_ARTIFACT_CHARS
+        url = page.get("url", "")
+
+        # --- raw source file: the entire body is code --------------------
+        if re.search(
+            r"(raw\.githubusercontent\.com|"
+            r"\.py|\.js|\.ts|\.java|\.c|\.cpp|\.go|\.rb|\.php|\.sh|\.ps1|\.yml|\.yaml)$",
+            url,
+            re.IGNORECASE,
+        ):
+            body = text.strip()
+            if len(body) > 20:
+                language = re.search(
+                    r"\.([a-z]+)$", url.split("?")[0], re.IGNORECASE
+                )
+                blocks.append(
+                    {
+                        "language": (language.group(1).lower() if language else "text"),
+                        "code": body[:limit],
+                        "source": url,
+                    }
+                )
+                return blocks
+
         for language, code in CODE_BLOCK_PATTERN.findall(text):
             cleaned = code.strip()
             if len(cleaned) < 12:
@@ -805,16 +833,26 @@ class TinyFishWebAgent:
         Runs concurrently with the agent so the fallback data is already
         gathered the instant the agent exceeds its budget. The total scan
         time becomes max(agent, fetch) rather than agent + fetch.
+
+        When the target is (or mentions) a CVE, a proof-of-concept query is
+        issued first. PoC pages are the only realistic source of actual
+        code, and code is what the ML engine has something to say about.
         """
-        queries = [f"{target_url} security advisory vulnerability"]
-        if cve_id:
-            queries.insert(0, f"{cve_id} exploit proof of concept")
+        target_cve = cve_id or self._cve_from_url(target_url)
+
+        queries: list[str] = []
+        if target_cve:
+            # PoC repositories carry real code - the ML engine needs it.
+            queries.append(f"{target_cve} proof of concept exploit github")
+        queries.append(f"{target_url} security advisory vulnerability")
         if focus:
             queries.append(f"{target_url} {focus} vulnerability")
+        if target_cve:
+            queries.append(f"{target_cve} patch diff fix commit")
 
         all_urls: list[str] = []
         sources_searched = 0
-        for query in queries[:3]:
+        for query in queries[:4]:
             hits = await self._search(query)
             sources_searched += len(hits)
             for hit in hits:
