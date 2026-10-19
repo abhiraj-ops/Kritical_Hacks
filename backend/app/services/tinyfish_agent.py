@@ -46,10 +46,10 @@ CRAWL_GOAL = (
     '{{"cve_ids": [string], "vulnerabilities": [{{"title": string, "severity": string, '
     '"cwe": string, "description": string, "affected_versions": string, "evidence_quote": string}}], '
     '"code_snippets": [{{"language": string, "code": string, "source": string}}], '
-    '"patch_diffs": [string], "references": [string], "summary": string}}\n'
-    "Steps: dismiss cookie/consent banners, expand collapsed sections, scroll to the "
-    "full advisory or issue thread, then read the description, affected versions, "
-    "proof-of-concept code and any patch diff. Quote text exactly as written."
+    '"patch_diffs": [string], "summary": string}}\n'
+    "Dismiss cookie banners, expand collapsed sections, then read the advisory text, "
+    "affected versions, proof-of-concept code and any patch diff. Quote text exactly as "
+    "written. Be efficient - read the main advisory rather than exploring every link."
 )
 
 POC_GOAL = (
@@ -624,6 +624,177 @@ class TinyFishWebAgent:
         )
 
     # ------------------------------------------------------------------
+    # NVD enrichment
+    # ------------------------------------------------------------------
+    NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+    @staticmethod
+    def _cve_from_url(url: str) -> str | None:
+        """Pull a CVE identifier out of a target URL, if there is one."""
+        match = CVE_PATTERN.search(url or "")
+        return match.group(0).upper() if match else None
+
+    async def _fetch_nvd_records(self, cve_ids: list[str]) -> list[dict[str, Any]]:
+        """Fetch authoritative CVE records from the NVD JSON API.
+
+        Scraping advisory HTML is brittle: the same page renders differently
+        between requests, so regexes hit different content each run. The NVD
+        JSON API returns the same structured data every time - severity,
+        CVSS vector, CWE and affected versions - so it is used to enrich
+        whatever the web crawl found.
+
+        This is enrichment, not replacement: the TinyFish crawl still
+        discovers the CVE, the PoC and the advisory context.
+        """
+        if self.demo:
+            return []
+
+        client = await self._get_client()
+        records: list[dict[str, Any]] = []
+
+        for cve in cve_ids[:4]:
+            try:
+                response = await client.get(
+                    self.NVD_API_URL, params={"cveId": cve}, timeout=20.0
+                )
+                if response.status_code != 200:
+                    continue
+                payload = response.json()
+            except Exception:
+                continue
+
+            for item in payload.get("vulnerabilities", []) or []:
+                record = self._parse_nvd_record(item)
+                if record:
+                    records.append(record)
+            # Be polite to the public NVD API.
+            await asyncio.sleep(0.35)
+
+        return records
+
+    @staticmethod
+    def _parse_nvd_record(item: dict[str, Any]) -> dict[str, Any] | None:
+        """Convert one NVD vulnerability object into our record shape."""
+        cve = item.get("cve") or {}
+        cve_id = str(cve.get("id") or "").upper()
+        if not cve_id:
+            return None
+
+        description = ""
+        for entry in cve.get("descriptions", []) or []:
+            if str(entry.get("lang", "")).lower() == "en":
+                description = str(entry.get("value", ""))
+                break
+        if not description:
+            return None
+
+        # --- severity: prefer the v3.1 primary metric -------------------
+        severity = "MEDIUM"
+        base_score: float | None = None
+        metrics = cve.get("metrics", {}) or {}
+        for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+            entries = metrics.get(key) or []
+            primary = next(
+                (e for e in entries if str(e.get("type", "")).lower() == "primary"),
+                entries[0] if entries else None,
+            )
+            if not primary:
+                continue
+            cvss_data = primary.get("cvssData", {}) or {}
+            try:
+                score = float(cvss_data.get("baseScore"))
+            except (TypeError, ValueError):
+                score = None
+            label = str(cvss_data.get("baseSeverity") or cvss_data.get("baseSeverity") or "").upper()
+            if label in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}:
+                severity = label
+            if score is not None and (base_score is None or score > base_score):
+                base_score = score
+            if severity != "MEDIUM" and base_score is not None:
+                break
+
+        # --- CWE ---------------------------------------------------------
+        cwe = None
+        for weakness in cve.get("weaknesses", []) or []:
+            for entry in weakness.get("description", []) or []:
+                value = str(entry.get("value", ""))
+                match = re.search(r"CWE-\d+", value, re.IGNORECASE)
+                if match:
+                    cwe = match.group(0).upper()
+                    break
+            if cwe:
+                break
+
+        # --- affected version ranges --------------------------------------
+        versions: list[str] = []
+        for configuration in cve.get("configurations", []) or []:
+            for node in configuration.get("nodes", []) or []:
+                for match in node.get("cpeMatch", []) or []:
+                    start = match.get("versionStartIncluding") or match.get("versionStartExcluding")
+                    end = match.get("versionEndIncluding") or match.get("versionEndExcluding")
+                    if start and end:
+                        versions.append(f"{start} through {end}")
+                    elif end:
+                        versions.append(f"before {end}")
+                    elif start:
+                        versions.append(f"from {start}")
+        affected = "; ".join(dict.fromkeys(versions))[:300]
+
+        return {
+            "title": cve_id,
+            "severity": severity,
+            "cwe": cwe,
+            "description": description[:900],
+            "affected_versions": affected,
+            "evidence_quote": description[:400],
+            "cve_ids": [cve_id],
+            "_source": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+            "_score": base_score,
+        }
+
+    @staticmethod
+    def _merge_vulnerabilities(
+        nvd: list[dict[str, Any]],
+        agent_records: list[dict[str, Any]],
+        scraped: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Merge vulnerability sources, most authoritative first.
+
+        NVD records carry the authoritative severity, CWE and description.
+        The agent's own records are richer in context (evidence quotes, PoC
+        links). Scraped records are the last resort.
+
+        A record is dropped when every CVE it names has already been covered.
+        """
+        merged: list[dict[str, Any]] = []
+        seen_cves: set[str] = set()
+        seen_titles: set[str] = set()
+
+        for record in [*nvd, *agent_records, *scraped]:
+            if not isinstance(record, dict):
+                continue
+            record = dict(record)
+
+            # Agent records do not carry a cve_ids list; derive it.
+            if not record.get("cve_ids"):
+                haystack = f"{record.get('title', '')} {record.get('description', '')}"
+                record["cve_ids"] = [m.group(0).upper() for m in CVE_PATTERN.finditer(haystack)]
+
+            cves = [str(c).upper() for c in (record.get("cve_ids") or [])]
+            title_key = re.sub(r"\W+", "", str(record.get("title", "")).lower())[:60]
+
+            if cves and all(c in seen_cves for c in cves):
+                continue
+            if not cves and title_key in seen_titles:
+                continue
+
+            seen_cves.update(cves)
+            seen_titles.add(title_key)
+            merged.append(record)
+
+        return merged[:12]
+
+    # ------------------------------------------------------------------
     # Public API — streaming
     # ------------------------------------------------------------------
     async def _gather_web_sources(
@@ -801,10 +972,30 @@ class TinyFishWebAgent:
         # The agent is the richer source, but when it times out the fallback
         # must still produce vulnerability records — otherwise an agent
         # timeout silently produced a 0/100 "nothing found" assessment.
-        if not intel.vulnerabilities:
-            intel.vulnerabilities = self._extract_vulnerabilities_from_pages(
-                pages, intel.cve_ids
+        scraped = self._extract_vulnerabilities_from_pages(pages, intel.cve_ids)
+
+        # --- NVD enrichment ------------------------------------------------
+        # Authoritative severity / CWE / description for every CVE we found.
+        # Scraping advisory HTML is brittle because the same page renders
+        # differently between requests; the NVD JSON API is deterministic.
+        target_cve = self._cve_from_url(target_url)
+        cve_order = ([target_cve] if target_cve else []) + [
+            c for c in intel.cve_ids if c != target_cve
+        ]
+        nvd_records = await self._fetch_nvd_records(cve_order[:4])
+        if nvd_records:
+            yield AgentEvent(
+                type="stage", step="enrich", level=EventLevel.success,
+                message=(
+                    f"Enriched {len(nvd_records)} CVE record(s) with authoritative "
+                    f"NVD data (severity, CWE, affected versions)."
+                ),
             )
+
+        agent_records = list(intel.vulnerabilities or [])
+        intel.vulnerabilities = self._merge_vulnerabilities(
+            nvd_records, agent_records, scraped
+        )
 
         # De-duplicate while preserving order.
         seen: set[str] = set()
