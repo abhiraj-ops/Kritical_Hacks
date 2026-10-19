@@ -80,11 +80,11 @@ class Settings:
     #: Wall-clock budget for the goal-driven agent path. When exceeded we
     #: abandon it and fall back to the fast Search + Fetch path, so a scan
     #: never stalls a live demo for minutes.
-    AGENT_TIME_BUDGET: int = 150
+    AGENT_TIME_BUDGET: int = 120
     #: Wall-clock budget for the TinyFish Research reasoning stage. Research
     #: routinely takes 5-20 minutes, which is far too long to hold a scan
     #: open, so we abandon it and fall back to the deterministic summary.
-    RESEARCH_TIME_BUDGET: int = 90
+    RESEARCH_TIME_BUDGET: int = 45
 
     # --- LLM reasoning -----------------------------------------------------
     OPENAI_API_KEY: str | None = None

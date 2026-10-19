@@ -648,19 +648,14 @@ class LLMOrchestrator:
             "Content-Type": "application/json",
         }
         deadline = time.monotonic() + max(15, self.settings.RESEARCH_TIME_BUDGET)
+        partial = ""
         async with httpx.AsyncClient(timeout=httpx.Timeout(900.0, connect=15.0)) as client:
             async with client.stream(
                 "POST", endpoint, json={"query": question, "mode": "deep", "stream": True}, headers=headers
             ) as response:
                 if response.status_code >= 400:
                     return ""
-                buffer = ""
                 async for line in response.aiter_lines():
-                    # Research routinely takes 5-20 minutes. We cannot hold a
-                    # scan open that long, so we bail out and let the
-                    # deterministic template produce the summary instead.
-                    if time.monotonic() > deadline:
-                        return ""
                     line = line.strip()
                     if not line.startswith("data:"):
                         continue
@@ -671,9 +666,22 @@ class LLMOrchestrator:
                         payload = json.loads(payload_raw)
                     except json.JSONDecodeError:
                         continue
-                    if payload.get("event") == "final_result":
+                    event_name = payload.get("event")
+                    if event_name == "final_result":
                         return str(payload.get("result") or "").strip()
-        return ""
+                    if event_name == "partial_summary":
+                        # Keep the latest interim synthesis as a fallback: the
+                        # Research pipeline routinely takes 5-20 minutes, and a
+                        # good partial answer beats waiting for the finale.
+                        candidate = str(payload.get("result") or payload.get("summary") or "")
+                        if len(candidate) > len(partial):
+                            partial = candidate
+                    # Research routinely takes 5-20 minutes. We cannot hold a
+                    # scan open that long, so we bail out and let the
+                    # deterministic template produce the summary instead.
+                    if time.monotonic() > deadline:
+                        return partial.strip()
+        return partial.strip()
 
     def _template_summary(
         self,
