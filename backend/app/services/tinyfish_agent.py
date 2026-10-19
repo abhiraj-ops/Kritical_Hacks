@@ -395,9 +395,10 @@ class TinyFishWebAgent:
     )
     CWE_PATTERN = re.compile(r"\bCWE[- ]?(\d{1,4})\b", re.IGNORECASE)
     VERSION_PATTERN = re.compile(
-        r"((?:versions?|releases?)\s+[\d.]+\s*(?:through|to|-|–)\s*[\d.]+|"
-        r"(?:before|prior to|earlier than)\s+[\d.]+|"
-        r"[\d.]+\s*(?:and\s+earlier|and\s+prior))",
+        r"((?:versions?|releases?)\s+[\d.]+(?:-\w+)?\s*(?:through|to|-|–)\s*[\d.]+(?:-\w+)?|"
+        r"[\d.]+(?:-\w+)?\s+(?:through|to)\s+[\d.]+(?:-\w+)?|"
+        r"(?:before|prior to|earlier than)\s+[\d.]+(?:-\w+)?|"
+        r"[\d.]+(?:\.\d+)*\s*(?:and\s+earlier|and\s+prior))",
         re.IGNORECASE,
     )
     DESC_TRIGGER = re.compile(
@@ -435,7 +436,7 @@ class TinyFishWebAgent:
                 continue
 
             page_cves = self._extract_cves(text)
-            if not page_cves and not self.CVE_PATTERN.search(text):
+            if not page_cves and not CVE_PATTERN.search(text):
                 # Still worth reporting a page that talks about vulnerabilities.
                 if not self.DESC_TRIGGER.search(text):
                     continue
