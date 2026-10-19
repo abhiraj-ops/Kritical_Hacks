@@ -65,12 +65,34 @@ The Agent API costs money per step and can be slow. Search + Fetch are free and 
 the scan **always completes with real live-web data**:
 
 ```
-Agent API  ──▶ success ──▶ structured intelligence from the browser session
-            └─── failure / over budget ──▶ Search (discover) ──▶ Fetch (extract) ──▶ same result
+        ┌── Agent API ──────────────────┐   (time-boxed)
+        │  drives a real cloud browser  │
+        └──────────────┬────────────────┘
+                       │  runs CONCURRENTLY with the fallback
+        ┌──────────────┴────────────────┐
+        │  Search  →  discover URLs      │
+        │  Fetch   →  render + extract   │
+        │  parse   →  CVSS / CWE /       │
+        │             affected versions  │
+        └──────────────┬────────────────┘
+                       ▼
+              full assessment
 ```
 
-The agent attempt is capped by `AGENT_TIME_BUDGET` (default 150 s). When the budget is exceeded
-we abandon the agent and fall through to Search + Fetch rather than stalling a live demo.
+Three details that make the fallback a **first-class** path rather than a degraded one:
+
+- **It runs concurrently with the agent.** The fallback is gathered in the background while the
+  agent browses, so an agent timeout costs *no extra wall-clock time*. Total scan time is
+  `max(agent, fetch)`, not `agent + fetch`.
+- **It extracts vulnerability records, not just CVE IDs.** The raw advisory pages carry a CVSS
+  score and severity, a CWE identifier, affected version ranges, a description and a verbatim
+  evidence quote — all parsed out of the fetched markdown. Without this, an agent timeout
+  silently produced a `0/100 "nothing found"` assessment even though the pages clearly
+  described the vulnerability.
+- **The agent path is capped by `AGENT_TIME_BUDGET`** (default 120 s). When the budget is
+  exceeded we abandon the agent rather than stalling a live demo.
+
+**A scan never returns empty.**
 
 ---
 
