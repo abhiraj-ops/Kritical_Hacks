@@ -1,0 +1,14 @@
+# ZeroDay-Guard AI — optional ML extras
+#
+# Install these to enable the CodeBERT embedding engine:
+#     pip install -r requirements.txt -r requirements-ml.txt
+#
+# torch is large (~2.5 GB with CUDA, ~200 MB CPU-only). The service is fully
+# functional without it: the AST/pattern engine still produces the risk score
+# and the engine field simply reports "ast" instead of "codebert+ast".
+#
+# CPU-only torch (much smaller):
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+torch>=2.4.0
+transformers>=4.44.0
