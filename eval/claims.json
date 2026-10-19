@@ -1,0 +1,52 @@
+[
+  {
+    "claim": "The Bharatiya Nyaya Sanhita replaced the Indian Penal Code in India on 1 July 2024",
+    "expected": "VERIFIED",
+    "note": "New criminal codes came into force 1 July 2024 — strong official + news coverage."
+  },
+  {
+    "claim": "Drinking papaya leaf juice cures dengue completely in 24 hours",
+    "expected": "MISLEADING",
+    "note": "Recurring Indian health misinformation; IFCN Indian fact-checkers have covered it."
+  },
+  {
+    "claim": "India's literacy rate was above 80 percent in the 2011 Census",
+    "expected": "MISLEADING",
+    "note": "2011 Census literacy was 74.04% — a widely fact-checked numeric claim."
+  },
+  {
+    "claim": "5G mobile networks cause coronavirus infections in humans",
+    "expected": "MISLEADING",
+    "note": "Well-documented global misinformation with extensive fact-check coverage."
+  },
+  {
+    "claim": "The Reserve Bank of India issued a 75 rupee commemorative coin for 75 years of independence",
+    "expected": "VERIFIED",
+    "note": "Azadi Ka Amrit Mahotsav commemorative coin — official RBI/PIB coverage."
+  },
+  {
+    "claim": "The Earth takes approximately 365.25 days to orbit the Sun",
+    "expected": "VERIFIED",
+    "note": "Control case — stable, high-agreement scientific fact."
+  },
+  {
+    "claim": "Humans only use 10 percent of their brains",
+    "expected": "MISLEADING",
+    "note": "Classic neuromyth with strong scientific refutation coverage."
+  },
+  {
+    "claim": "Drinking eight glasses of water a day is a medically proven requirement for everyone",
+    "expected": "DISPUTED",
+    "note": "Contentious — sources genuinely disagree; good DISPUTED-path test."
+  },
+  {
+    "claim": "The Kármán line at 100 km above sea level defines the edge of space",
+    "expected": "VERIFIED",
+    "note": "Reference/encyclopedic agreement — tests authority weighting on wikipedia/edu."
+  },
+  {
+    "claim": "Qzxplm vapour trails control the weather across Europe",
+    "expected": "UNVERIFIED",
+    "note": "Nonsense control — must fail gracefully into UNVERIFIED, not crash."
+  }
+]
