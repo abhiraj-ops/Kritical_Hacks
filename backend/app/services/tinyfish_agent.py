@@ -442,27 +442,23 @@ class TinyFishWebAgent:
                     continue
 
             # --- severity from a CVSS score if present --------------------
+            # Take the HIGHEST scoring match, not the first: advisory pages
+            # often mention several CVSS vectors and the first one in the
+            # markdown is not necessarily the headline score.
             severity = "MEDIUM"
             score_value: float | None = None
-            match = self.CVSS_PATTERN.search(text)
-            if match:
+            for match in self.CVSS_PATTERN.finditer(text):
                 try:
-                    score_value = float(match.group(1))
+                    candidate_score = float(match.group(1))
                 except ValueError:
-                    score_value = None
-                severity = match.group(2).upper()
-                if severity == "MODERATE":
-                    severity = "MEDIUM"
-                if severity == "NONE":
-                    severity = "INFO"
-            else:
-                for threshold, label in self.SEVERITY_FROM_SCORE:
-                    if any(
-                        word in text.upper()[:4000]
-                        for word in (label,)
-                    ) and label != "INFO":
-                        severity = label
-                        break
+                    continue
+                if score_value is None or candidate_score > score_value:
+                    score_value = candidate_score
+                    severity = match.group(2).upper()
+            if severity == "MODERATE":
+                severity = "MEDIUM"
+            if severity == "NONE":
+                severity = "INFO"
 
             # --- CWE ------------------------------------------------------
             cwe_match = self.CWE_PATTERN.search(text)
@@ -478,9 +474,22 @@ class TinyFishWebAgent:
             if not description and not cwe and not page_cves:
                 continue
 
+            # The finding title should identify the VULNERABILITY, not the
+            # page it came from. "Splunk Security Advisory for Apache Log4j"
+            # is a source; "CVE-2021-44228" is a finding. The page title is
+            # kept as supporting context in the description.
+            if page_cves:
+                finding_title = ", ".join(page_cves[:2])
+                if description:
+                    description = f"{title} — {description}"
+                else:
+                    description = title
+            else:
+                finding_title = title
+
             records.append(
                 {
-                    "title": title[:200],
+                    "title": finding_title[:200],
                     "severity": severity,
                     "cwe": cwe,
                     "description": description,
@@ -516,13 +525,21 @@ class TinyFishWebAgent:
             if 80 <= len(p.strip()) <= 1200
         ]
         for paragraph in paragraphs:
-            if any(cve in paragraph.upper() for cve in cve_ids) or TinyFishWebAgent.DESC_TRIGGER.search(
+            # Skip markdown table rows and navigation chrome: they trip the
+            # keyword trigger but read as noise in a findings panel.
+            pipes = paragraph.count("|")
+            if pipes > 6 or (pipes and pipes / max(1, len(paragraph)) > 0.08):
+                continue
+            lowered = paragraph.lower()
+            if any(lowered.count(cve.lower()) for cve in cve_ids) or TinyFishWebAgent.DESC_TRIGGER.search(
                 paragraph
             ):
                 # Strip markdown noise but keep the sentence verbatim.
                 cleaned = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", paragraph)
                 cleaned = re.sub(r"[#*_`>]+", "", cleaned)
                 cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                if len(cleaned) < 60:
+                    continue
                 return cleaned[:900], cleaned[:400]
         return "", ""
 

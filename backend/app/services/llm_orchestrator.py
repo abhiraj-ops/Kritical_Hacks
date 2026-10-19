@@ -437,7 +437,11 @@ class LLMOrchestrator:
         return RiskScore(
             risk_score=max(0, min(100, score)),
             severity_label=severity,
-            confidence=round(float(ml_result.get("confidence", 0.5)), 3),
+            # The ML engine has nothing to say when no code was harvested, but
+            # a well-evidenced set of web findings is not zero-confidence.
+            confidence=round(
+                max(float(ml_result.get("confidence", 0.0)), 0.45 if findings else 0.0), 3
+            ),
             engine=str(ml_result.get("engine", "ast")),
             factors=list(ml_result.get("factors", []))[:8],
             vector=dict(ml_result.get("vector", {})),
