@@ -422,6 +422,20 @@ class CodeBETAstScanner:
         (r"getInstance\s*\(\s*[\"']MD5[\"']", "java", "CWE-328", "MEDIUM", "crypto_weakness", "MD5 is a broken hash algorithm"),
         (r"getInstance\s*\(\s*[\"']SHA-?1[\"']", "java", "CWE-328", "MEDIUM", "crypto_weakness", "SHA-1 is a broken hash algorithm"),
         (r"TrustManager|HostnameVerifier|setDefaultHostnameVerifier", "java", "CWE-295", "HIGH", "auth_bypass", "Custom TLS trust manager may disable verification"),
+        # --- exploit indicators -------------------------------------------
+        # Harvested proof-of-concept code is attack code, not vulnerable
+        # application code, so the classic sink rules rarely fire. These
+        # recognise the exploit primitives themselves.
+        (r"\$\{\s*jndi\s*:", "any", "CWE-917", "CRITICAL", "code_injection", "JNDI lookup payload (Log4Shell-style remote class loading)"),
+        (r"(?:ldap|rmi|dns|ldaps)://", "any", "CWE-918", "HIGH", "code_injection", "External reference to a remote endpoint"),
+        (r"/bin/(?:ba)?sh\s+-i", "any", "CWE-78", "CRITICAL", "code_injection", "Reverse shell payload"),
+        (r"\bnc\s+(?:-[a-z]*e\b|-e\s)", "any", "CWE-78", "CRITICAL", "code_injection", "Netcat reverse shell payload"),
+        (r"socket\.socket\s*\(", "python", "CWE-78", "MEDIUM", "code_injection", "Raw socket usage"),
+        (r"b64decode\s*\(", "any", "CWE-506", "MEDIUM", "code_injection", "Encoded payload decoded at runtime"),
+        (r"base64\.b64decode\s*\(", "python", "CWE-506", "MEDIUM", "code_injection", "Encoded payload decoded at runtime"),
+        (r"__import__\s*\(", "python", "CWE-95", "HIGH", "code_injection", "Dynamic import of a runtime-chosen module"),
+        (r"exec\s*\(\s*(?:compile|base64|bytes|request|payload|cmd)", "python", "CWE-95", "CRITICAL", "code_injection", "Dynamic execution of a constructed payload"),
+        (r"(?:http|https)://[^\s\"']*\$\{", "any", "CWE-918", "MEDIUM", "code_injection", "Dynamic URL construction (possible SSRF)"),
     ]
 
     SECRET_PATTERN = re.compile(
@@ -432,7 +446,8 @@ class CodeBETAstScanner:
     def _analyse_patterns(self, code: str, language: str) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
         for pattern, langs, cwe, severity, dimension, title in self.PATTERN_RULES:
-            if language not in langs.split(","):
+            # "any" applies to every language.
+            if "any" not in langs and language not in langs.split(","):
                 continue
             match = re.search(pattern, code)
             if not match:
@@ -491,8 +506,10 @@ class CodeBETAstScanner:
             if re.search(r"\bself\.|\belif\b|\bNone\b|\bTrue\b", code):
                 return "python"
         if re.search(
-            r"(=>|\bfunction\s+\w*\s*\(|\bconst\s+\w+\s*=|\blet\s+\w+\s*=|"
-            r"\brequire\s*\(|console\.log|document\.)",
+            r"(=>|\bfunction\s*[\w]*\s*\(|\b(?:var|let|const)\s+\w+\s*=|"
+            r"\brequire\s*\(|console\.log|document\.|window\.|\.innerHTML|"
+            r"\.textContent|\bexport\s+(?:default|\{|const|function)|"
+            r"\bimport\s+.*\bfrom\s+['\"])",
             code,
         ):
             return "js"
@@ -563,6 +580,18 @@ class CodeBETAstScanner:
             if SEVERITY_ORDER.index(finding["severity"]) > SEVERITY_ORDER.index(max_sev):
                 max_sev = finding["severity"]
         severity_label = self._severity_from_score(risk_score, max_sev)
+
+        # Keep the number and the label consistent. A single CRITICAL finding
+        # floors the label, so the score has to clear the same bar - otherwise
+        # the UI shows "44/100 CRITICAL", which reads like a bug.
+        score_floor = {
+            "CRITICAL": 78,
+            "HIGH": 62,
+            "MEDIUM": 45,
+            "LOW": 25,
+            "INFO": 0,
+        }.get(severity_label, 0)
+        risk_score = int(max(risk_score, score_floor))
 
         # --- radar vector ----------------------------------------------
         vector = {d: 0.0 for d in RADAR_DIMENSIONS}
