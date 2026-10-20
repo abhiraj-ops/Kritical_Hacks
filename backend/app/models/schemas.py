@@ -149,7 +149,7 @@ class Assessment(BaseModel):
 class AgentEvent(BaseModel):
     """One step in the live agent trace."""
 
-    type: Literal["stage", "finding", "progress", "complete", "error"] = "stage"
+    type: Literal["stage", "finding", "progress", "intel", "complete", "error"] = "stage"
     step: str
     message: str
     level: EventLevel = EventLevel.info

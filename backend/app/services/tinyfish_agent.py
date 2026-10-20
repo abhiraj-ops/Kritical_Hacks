@@ -901,7 +901,7 @@ class TinyFishWebAgent:
                 yield AgentEvent(type="progress", step="demo", message=message)
             intel = self._mock_intel(target_url)
             yield AgentEvent(
-                type="complete", step="complete", level=EventLevel.success,
+                type="intel", step="complete", level=EventLevel.success,
                 message=f"Demo intelligence assembled for {target_url}",
                 data={"intel": intel.to_dict(), "elapsed": asyncio.get_event_loop().time() - started},
             )
@@ -1058,7 +1058,7 @@ class TinyFishWebAgent:
                 intel.cve_ids.insert(0, normalised)
 
         yield AgentEvent(
-            type="complete", step="complete", level=EventLevel.success,
+            type="intel", step="complete", level=EventLevel.success,
             message=(
                 f"Harvested {len(intel.code_blocks)} code artefacts and "
                 f"{len(intel.cve_ids)} CVE identifiers."

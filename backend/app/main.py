@@ -103,7 +103,7 @@ async def _run_pipeline(
     async for event in tinyfish_agent.stream_crawl(target_url, cve_id=cve_id, focus=focus):
         trace.append(event.message)
         yield event
-        if event.type == "complete" and event.data:
+        if event.type == "intel" and event.data:
             intel_payload = event.data.get("intel", {})
 
             # --- ML stage -------------------------------------------------

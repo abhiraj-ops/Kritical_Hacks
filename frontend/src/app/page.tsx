@@ -95,19 +95,33 @@ export default function Dashboard() {
       }
     });
 
-    source.addEventListener("complete", (e) => {
+    source.addEventListener("intel", (e) => {
       try {
-        const event = JSON.parse((e as MessageEvent).data) as AgentEvent;
-        push(event);
-        const data = event.data ?? {};
-        if (data.assessment) {
-          setAssessment(data.assessment as Assessment);
-        }
+        push(JSON.parse((e as MessageEvent).data) as AgentEvent);
       } catch {
         /* ignore malformed frame */
       }
-      setRunning(false);
-      source.close();
+    });
+
+    source.addEventListener("complete", (e) => {
+      let event: AgentEvent;
+      try {
+        event = JSON.parse((e as MessageEvent).data) as AgentEvent;
+      } catch {
+        setRunning(false);
+        source.close();
+        return;
+      }
+      push(event);
+      const data = event.data ?? {};
+      if (data.assessment) {
+        setAssessment(data.assessment as Assessment);
+        setRunning(false);
+        source.close();
+      }
+      // NOTE: "complete" now only fires for the final assessment. The
+      // intermediate intel event has its own "intel" type, so closing the
+      // stream here cannot cut the assessment short.
     });
 
     source.addEventListener("error", (e) => {
