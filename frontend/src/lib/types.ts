@@ -86,38 +86,87 @@ export interface HealthResponse {
   };
 }
 
-export const SEVERITY_STYLES: Record<
-  Severity,
-  { text: string; ring: string; bg: string; hex: string }
-> = {
+/* ------------------------------------------------------------------ *
+ * Presentation tokens
+ *
+ * Severity is a muted, legible ramp on warm neutrals — no neon, no
+ * glow. The single accent (blue) is reserved for primary actions and
+ * active state, so it never collides with a finding's severity colour.
+ * ------------------------------------------------------------------ */
+
+export interface SeverityToken {
+  /** Text colour for the label itself. */
+  text: string;
+  /** Very light background for the badge. */
+  bg: string;
+  /** Hairline border for the badge. */
+  border: string;
+  /** Solid fill used for meter bars and dots. */
+  solid: string;
+  /** Human label. */
+  label: string;
+}
+
+export const SEVERITY_STYLES: Record<Severity, SeverityToken> = {
   CRITICAL: {
-    text: "text-rose-300",
-    ring: "stroke-rose-500",
-    bg: "bg-rose-500/10 border-rose-500/40",
-    hex: "#fb7185",
+    text: "text-critical-fg",
+    bg: "bg-critical-bg",
+    border: "border-critical-line",
+    solid: "#D92D20",
+    label: "Critical",
   },
   HIGH: {
-    text: "text-orange-300",
-    ring: "stroke-orange-500",
-    bg: "bg-orange-500/10 border-orange-500/40",
-    hex: "#fb923c",
+    text: "text-high-fg",
+    bg: "bg-high-bg",
+    border: "border-high-line",
+    solid: "#DC6803",
+    label: "High",
   },
   MEDIUM: {
-    text: "text-amber-300",
-    ring: "stroke-amber-500",
-    bg: "bg-amber-500/10 border-amber-500/40",
-    hex: "#fbbf24",
+    text: "text-medium-fg",
+    bg: "bg-medium-bg",
+    border: "border-medium-line",
+    solid: "#DC6803",
+    label: "Medium",
   },
   LOW: {
-    text: "text-sky-300",
-    ring: "stroke-sky-500",
-    bg: "bg-sky-500/10 border-sky-500/40",
-    hex: "#38bdf8",
+    text: "text-low-fg",
+    bg: "bg-low-bg",
+    border: "border-low-line",
+    solid: "#0BA5EC",
+    label: "Low",
   },
   INFO: {
-    text: "text-slate-300",
-    ring: "stroke-slate-500",
-    bg: "bg-slate-500/10 border-slate-500/40",
-    hex: "#94a3b8",
+    text: "text-ink-2",
+    bg: "bg-surface-3",
+    border: "border-line-strong",
+    solid: "#A1A1AA",
+    label: "Info",
   },
+};
+
+/** Most severe first — used for sorting and for the legend order. */
+export const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+
+export function severityToken(severity: string): SeverityToken {
+  return SEVERITY_STYLES[severity as Severity] ?? SEVERITY_STYLES.INFO;
+}
+
+/* ------------------------------------------------------------------ *
+ * Event levels
+ * ------------------------------------------------------------------ */
+
+export interface EventLevelToken {
+  label: string;
+  /** Dot colour used in the activity log gutter. */
+  dot: string;
+  text: string;
+}
+
+export const LEVEL_STYLES: Record<EventLevel, EventLevelToken> = {
+  agent: { label: "AGENT", dot: "bg-accent", text: "text-accent" },
+  success: { label: "OK", dot: "bg-emerald-600", text: "text-emerald-700" },
+  info: { label: "INFO", dot: "bg-sky-600", text: "text-sky-700" },
+  warn: { label: "WARN", dot: "bg-amber-600", text: "text-amber-700" },
+  error: { label: "ERR", dot: "bg-red-600", text: "text-red-700" },
 };

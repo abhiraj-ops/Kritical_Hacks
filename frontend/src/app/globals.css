@@ -2,134 +2,215 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg: #05070d;
-  --panel: #0b0f18;
-  --panel-2: #0f1522;
-  --line: #1c2534;
-  --ink: #e2e8f0;
-  --muted: #64748b;
-  --accent: #34d399;
-}
+/* ------------------------------------------------------------------ *
+ * ZeroDay-Guard AI — base layer
+ *
+ * Canvas is a warm off-white, surfaces are true white, and every
+ * separation is a crisp 1px hairline rather than a glow or a blur.
+ * ------------------------------------------------------------------ */
 
-html {
-  color-scheme: dark;
-}
+@layer base {
+  :root {
+    color-scheme: light;
 
-body {
-  background: var(--bg);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
-}
+    --canvas: #f5f5f3;
+    --surface: #ffffff;
+    --surface-2: #fafaf9;
+    --surface-3: #f1f1ef;
+    --ink: #17171a;
+    --ink-2: #43434a;
+    --muted: #6e6e78;
+    --faint: #9a9aa3;
+    --line: #e4e4e1;
+    --line-strong: #d3d3ce;
 
-/* Faint grid + vignette backdrop for the SOC look. */
-.bg-grid {
-  background-image:
-    linear-gradient(to right, rgba(52, 211, 153, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(52, 211, 153, 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
-}
+    --accent: #1d4ed8;
+    --accent-hover: #1a43b4;
+    --accent-soft: #eff3ff;
+    --accent-line: #c3d2fb;
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.panel-header {
-  border-bottom: 1px solid var(--line);
-  padding: 0.75rem 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-/* Terminal specifics */
-.terminal-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.terminal-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.terminal-scroll::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 999px;
-}
-
-.scanline {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(52, 211, 153, 0.055) 50%,
-    transparent 100%
-  );
-  height: 40%;
-  animation: scanLine 2.6s linear infinite;
-}
-
-@keyframes scanLine {
-  0% {
-    transform: translateY(-100%);
+    --shadow-xs: 0 1px 2px rgba(16, 16, 20, 0.04);
+    --shadow-sm: 0 1px 2px rgba(16, 16, 20, 0.04), 0 1px 3px rgba(16, 16, 20, 0.06);
+    --shadow-md: 0 1px 2px rgba(16, 16, 20, 0.04), 0 4px 10px rgba(16, 16, 20, 0.06);
+    --shadow-pop: 0 2px 6px rgba(16, 16, 20, 0.06), 0 12px 32px rgba(16, 16, 20, 0.12);
   }
-  100% {
-    transform: translateY(350%);
+
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Keyboard focus is always visible and always the accent colour. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: #dbe4fd;
+    color: #14246b;
   }
 }
 
-@keyframes pulseDot {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+@layer components {
+  /* Surfaces ------------------------------------------------------------ */
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
   }
-  50% {
-    opacity: 0.35;
-    transform: scale(0.8);
+
+  .surface-flat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+  }
+
+  /* Section header used by every panel in the workbench. */
+  .panel-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 44px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+
+  .panel-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Controls ------------------------------------------------------------ */
+  .field {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--ink);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .field::placeholder {
+    color: var(--faint);
+  }
+
+  .field:hover {
+    border-color: #b9b9b2;
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+  }
+
+  /* Scrollbars — thin and unobtrusive, never a wide glowing bar. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: #d6d6d1 transparent;
+  }
+
+  .scroll-slim::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: #d6d6d1;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background: #b9b9b2;
+    background-clip: content-box;
+  }
+
+  /* Diff viewer --------------------------------------------------------- */
+  .diff-line {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    tab-size: 2;
+  }
+
+  .diff-add {
+    background: #ecfdf3;
+    color: #0f5132;
+  }
+
+  .diff-remove {
+    background: #fef2f2;
+    color: #991b1b;
+  }
+
+  .diff-hunk {
+    color: #1d4ed8;
+    font-weight: 600;
   }
 }
 
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
-  50% {
-    opacity: 0;
-  }
-}
 
-/* Diff viewer */
-.diff-line {
-  display: block;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.diff-add {
-  background: rgba(52, 211, 153, 0.1);
-  color: #6ee7b7;
-}
-.diff-remove {
-  background: rgba(251, 113, 133, 0.1);
-  color: #fda4af;
-}
-.diff-hunk {
-  color: #38bdf8;
-  font-weight: 600;
+  /* Diagonal hatch used for "no data" regions in meters. */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      45deg,
+      #e7e7e3,
+      #e7e7e3 1px,
+      transparent 1px,
+      transparent 5px
+    );
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scanline,
-  .animate-pulse-dot {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

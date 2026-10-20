@@ -2,7 +2,7 @@
   "name": "zeroday-guard-ai-frontend",
   "version": "1.0.0",
   "private": true,
-  "description": "ZeroDay-Guard AI dashboard — live agent terminal, ML risk radar and generated patches.",
+  "description": "ZeroDay-Guard AI dashboard — threat assessment workbench, risk scoring and generated patches.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@netlify/blobs": "^1.0.0",
-    "framer-motion": "^11.15.0",
     "lucide-react": "^0.469.0",
     "next": "15.5.28",
     "react": "19.0.0",

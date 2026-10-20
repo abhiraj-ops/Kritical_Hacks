@@ -11,6 +11,49 @@ Target URL  ──▶  TinyFish Web Agent  ──▶  CodeBERT + AST  ──▶ 
 
 ---
 
+## 🖥 The interface
+
+The dashboard is a **workbench**, not a landing page: a persistent shell around a single
+scan, because an analyst's loop is *scan → read → act → compare*, and every step should
+keep the previous result in view.
+
+| Area | What it does |
+|---|---|
+| **Sidebar** | Workspace switcher, view navigation, the last six runs with their verdict, live engine status, account menu |
+| **Top bar** | Breadcrumbs, global search (`⌘K`), engine heartbeat, primary action |
+| **Target composer** | Labelled URL field with optional CVE ID and focus, inline validation, `⌘↵` to run |
+| **Assessment** | Risk score on a labelled 0–100 scale, six-dimension risk vector, risk drivers, executive summary, findings |
+| **Findings** | One row per vulnerability, expandable to show the evidence quote, code snippet and source link |
+| **Remediation** | The generated diff with `+`/`−` counts, plus the manual steps and upstream references |
+| **Run log** | Every pipeline stage, timestamped and level-filtered — the agent's trace, read as a log |
+| **History** | Scans run from this browser, with target, verdict, finding count and timing |
+
+### Design decisions
+
+- **One accent, used sparingly.** `#1D4ED8` marks primary actions and active state only.
+  Severity has its own muted ramp (`#B42318` → `#0369A1`) so a CRITICAL finding never
+  competes with the interface chrome.
+- **Warm neutrals, hairline separation.** A `#F5F5F3` canvas, white surfaces and 1px
+  `#E4E4E1` borders. Depth comes from `0 1px 2px` shadows, not from blur or glow.
+- **Two typefaces with a rule.** Inter for everything a human reads, IBM Plex Mono for
+  anything a machine wrote — URLs, CVEs, diffs, timestamps.
+- **Bars, not radar polygons.** The six risk dimensions are labelled horizontal meters with
+  printed values, so two dimensions can be compared without decoding an angle.
+- **Honest labelling.** `Patch availability` measures fix *coverage* rather than risk, and
+  the panel says so instead of colour-coding it like a risk axis.
+
+### Keyboard
+
+| Shortcut | Action |
+|---|---|
+| `⌘K` | Command palette — views, actions and recent runs |
+| `⌘↵` | Run a scan on the current target |
+| `/` | Focus the target URL field |
+| `↑` `↓` `↵` | Move through and run palette results |
+| `?` | Shortcut reference |
+
+---
+
 ## 🚀 Deploy to Netlify (one click, this is the live site)
 
 The whole product — dashboard **and** API — is one Next.js app, so it deploys as a single unit.
@@ -222,7 +265,7 @@ The fallback is not a toy — it is real static analysis.
   XSS, `child_process.exec`, `Runtime.getRuntime().exec`, `ObjectInputStream`, `Class.forName`,
   MD5/SHA-1, disabled TLS verification.
 
-Every finding carries a **CWE identifier** and is mapped to one of six radar dimensions
+Every finding carries a **CWE identifier** and is mapped to one of six analysis dimensions
 (`code_injection`, `memory_safety`, `input_validation`, `crypto_weakness`, `auth_bypass`,
 `data_exposure`).
 
@@ -426,8 +469,9 @@ the API is job-based. The scan continues in the background after the response is
 | `POST` | `/api/v1/scan` | Body `{ target_url }` → `{ jobId, status }` immediately |
 | `GET` | `/api/v1/scan/{jobId}` | `{ status, events[], assessment, error }` |
 
-The dashboard polls every 1.2 s and appends only the events it has not seen, so the terminal
-fills up live exactly as it would with SSE.
+The dashboard polls every 1.2 s and appends only the events it has not seen, so the run log
+fills up live exactly as it would with SSE. Event writes are serialised server-side, so the
+final trace line can never be lost to a write race with the `done` status update.
 
 ```bash
 # create a job
@@ -476,18 +520,33 @@ backend/                         # ── self-hosted tier (Python, full ML) ─
 
 frontend/                        # ── Netlify tier (the live site) ──
 ├── src/app/
-│   ├── page.tsx                      # dashboard, job polling
-│   ├── layout.tsx  globals.css
-│   └── app/api/v1/
+│   ├── page.tsx                      # thin server wrapper -> <Workbench/>
+│   ├── layout.tsx  globals.css       # fonts + design tokens
+│   └── api/v1/
 │       ├── health/route.ts           # service status
 │       ├── scan/route.ts             # POST -> create job, run in background
 │       └── scan/[jobId]/route.ts     # GET  -> job status + event trace
 ├── src/components/
-│   ├── AgentTerminal.tsx             # live streaming terminal
-│   ├── RiskCard.tsx                  # risk dial + SVG radar chart
-│   └── PatchGenerator.tsx            # diff viewer
+│   ├── shell/                        # app chrome
+│   │   ├── Sidebar.tsx               # nav, recent runs, engine status
+│   │   ├── TopBar.tsx                # breadcrumbs, command trigger, health
+│   │   ├── CommandPalette.tsx        # ⌘K palette (views, actions, runs)
+│   │   └── ShortcutsDialog.tsx       # ? key reference
+│   ├── ui/                           # primitives: Panel, Button, Badge, Kbd, Meter
+│   └── workbench/
+│       ├── Workbench.tsx             # client app: state, polling, shortcuts
+│       ├── TargetComposer.tsx        # scan form (⌘↵ to run)
+│       ├── ActivityLog.tsx           # levelled, filterable pipeline trace
+│       ├── RiskSummary.tsx           # score, scale, six-dimension risk vector
+│       ├── ExecutiveSummary.tsx      # reasoning-engine narrative + signals
+│       ├── FindingsTable.tsx         # findings with expandable evidence
+│       ├── PatchPanel.tsx            # diff / steps / references tabs
+│       └── HistoryTable.tsx          # scans run from this browser
 ├── src/lib/
-│   ├── types.ts                      # shared types
+│   ├── types.ts                      # shared types + severity tokens
+│   ├── format.ts                     # relative time, durations, URL helpers
+│   ├── scans.ts                      # localStorage-backed scan history
+│   ├── views.ts                      # view registry
 │   └── zeroday/
 │       ├── tinyfish.ts               # Search + Fetch + Agent + Research clients
 │       ├── nvd.ts                    # authoritative CVE enrichment
