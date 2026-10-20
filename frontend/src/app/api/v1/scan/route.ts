@@ -53,14 +53,23 @@ export async function POST(req: Request) {
   const execute = async () => {
     await updateJob(id, (j) => ({ ...j, status: "running" }));
 
-    const emit = async (e: PipelineEvent) => {
-      await updateJob(id, (j) => appendEvent(j, e));
+    // Event writes are serialised. The pipeline emits without awaiting, so
+    // two concurrent read-modify-write cycles on the same job would race and
+    // drop events — including the final one, which the client polls for
+    // right as the job flips to "done".
+    let writes: Promise<unknown> = Promise.resolve();
+
+    const emit = (e: PipelineEvent) => {
+      writes = writes.then(() => updateJob(id, (j) => appendEvent(j, e)));
+      return writes;
     };
 
     try {
       const assessment = await runScan(targetUrl, cveId, focus, (e) => {
         void emit(e);
       });
+      // Flush every pending event before the job is marked complete.
+      await writes;
       await updateJob(id, (j) => ({
         ...j,
         status: "done",
