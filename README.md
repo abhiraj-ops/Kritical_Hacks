@@ -11,6 +11,65 @@ Target URL  ──▶  TinyFish Web Agent  ──▶  CodeBERT + AST  ──▶ 
 
 ---
 
+## 🚀 Deploy to Netlify (one click, this is the live site)
+
+The whole product — dashboard **and** API — is one Next.js app, so it deploys as a single unit.
+There is no second backend to run and no CORS to configure.
+
+### 1. Connect the repo to Netlify
+
+1. Go to <https://app.netlify.com> → **Add new site** → **Import an existing project**
+2. Choose **abhiraj-ops/Kritical_Hacks**
+3. Netlify reads `netlify.toml` automatically:
+   - Build command: `npm run build`
+   - Publish directory: `.next`
+   - Base directory: `frontend`
+4. Click **Deploy site**
+
+### 2. Add your TinyFish key (required — without it the app runs in demo mode)
+
+**Site configuration → Environment variables → Add:**
+
+| Key | Value |
+|---|---|
+| `TINYFISH_API_KEY` | `sk-tinyfish-…` (from <https://agent.tinyfish.ai/api-keys>) |
+
+Then **Deploy site → Trigger deploy → Clear cache and deploy site**.
+
+### 3. Done
+
+Your site is live at `https://<your-site>.netlify.app`. The dashboard, the scanning API and the
+job store all run inside that one deploy.
+
+> **No database, no queue, no third-party service.** Job state lives in Netlify Blobs, which is
+> included on every plan.
+
+### Deploying manually instead
+
+```bash
+npm i -g netlify-cli
+cd frontend && npm run build
+netlify deploy --prod --dir .next
+```
+
+---
+
+## 🧱 Two tiers, one product
+
+| | **Netlify tier** (the live site) | **Self-hosted tier** (full ML) |
+|---|---|---|
+| Runtime | Next.js 15 on Netlify Functions | Python 3.12 · FastAPI · Uvicorn |
+| Static analysis | Pattern analysis (all languages) | **`ast` module** for true Python AST analysis |
+| CodeBERT | ✗ (torch cannot run serverless) | ✓ `microsoft/codebert-base` embeddings |
+| Run it | `netlify deploy` | `docker compose up --build` |
+| Best for | the demo, judges, the live link | the finale, deeper analysis |
+
+Both tiers run **the same pipeline** and produce the same kind of assessment. The Python tier is
+the reference implementation and adds the CodeBERT embedding engine; the TypeScript tier is the
+port that makes a one-click deploy possible.
+
+---
+
 ## 🎯 What it actually does
 
 1. **Autonomous reconnaissance** — hands TinyFish a natural-language goal ("find the advisory,
@@ -145,6 +204,10 @@ risk_score = 0.78 × ast_score + 0.22 × (semantic_risk × 100)
 > **Stated plainly, because it matters for the judging:** this is embedding similarity, *not* a
 > fine-tuned classifier. The `engine` field in every response tells you which produced the score
 > — `codebert+ast` or `ast`. The AST engine does the heavy lifting; CodeBERT is a second opinion.
+>
+> **CodeBERT runs on the self-hosted tier only.** A serverless function cannot load torch, so the
+> Netlify tier reports `engine: ast` and uses the pattern analyser on its own. The API always
+> tells you which produced the score, so nothing is overstated.
 
 ### AST / pattern static analyser
 
@@ -205,32 +268,65 @@ diff is worse than no diff.
 ## 🖥️ Architecture
 
 ```
-┌──────────────┐   SSE (NDJSON-style frames)   ┌──────────────────────────┐
-│  Next.js 15  │◀───────────────────────────────│  FastAPI (asyncio)       │
-│  dashboard   │                                │                          │
-│              │                                │  ┌────────────────────┐  │
-│ • terminal   │                                │  │ TinyFishWebAgent   │  │
-│ • risk radar │                                │  │  agent→search→fetch│  │
-│ • patch diff │                                │  └────────────────────┘  │
-└──────────────┘                                │  ┌────────────────────┐  │
-                                                │  │ CodeBETAstScanner  │  │
-                                                │  └────────────────────┘  │
-                                                │  ┌────────────────────┐  │
-                                                │  │ LLMOrchestrator    │  │
-                                                │  └────────────────────┘  │
-                                                └──────────────────────────┘
+        NETLIFY TIER — the live site (one deploy)          SELF-HOSTED TIER — full ML
+┌───────────────────────────────┐                 ┌───────────────────────────────┐
+│  Next.js 15 on Netlify       │                 │  Next.js 15 dashboard         │
+│                               │                 │        │  SSE                  │
+│  ┌─────────────────────────┐  │                 │        ▼                      │
+│  │ /api/v1/scan  (POST)    │  │                 │  FastAPI (asyncio)            │
+│  │   create job → after()  │  │                 │   ┌──────────────────────┐   │
+│  └───────────┬─────────────┘  │                 │   │ TinyFishWebAgent     │   │
+│              │                │                 │   │ CodeBETAstScanner    │   │
+│  ┌───────────▼─────────────┐  │                 │   │ LLMOrchestrator      │   │
+│  │ /api/v1/scan/{id} (GET) │  │                 │   └──────────────────────┘   │
+│  │   events[] + assessment │  │                 └───────────────────────────────┘
+│  └─────────────────────────┘  │
+│                               │                 ┌───────────────────────────────┐
+│  job state → Netlify Blobs   │                 │  torch + transformers         │
+│  ┌─────────────────────────┐  │                 │  microsoft/codebert-base      │
+│  │ src/lib/zeroday/       │  │                 │  (2.5GB, local only)          │
+│  │  tinyfish · nvd         │  │                 └───────────────────────────────┘
+│  │  scanner · scoring      │  │
+│  │  pipeline · store       │  │
+│  └─────────────────────────┘  │
+└───────────────────────────────┘
 ```
 
-**Backend** — FastAPI, asyncio, Pydantic v2, Uvicorn, httpx.
-**ML** — HuggingFace Transformers + PyTorch (`microsoft/codebert-base`), stdlib `ast`.
-**Frontend** — Next.js 15 (App Router), TypeScript, Tailwind CSS, Lucide, Framer Motion.
-**Agent** — TinyFish Python SDK / REST.
+**Backend** — FastAPI, asyncio, Pydantic v2, Uvicorn (self-hosted tier).
+**Pipeline core** — TypeScript in `frontend/src/lib/zeroday/`, so the Netlify tier needs no
+Python runtime. The Python services are the reference implementation of the same pipeline.
+**ML** — HuggingFace Transformers + PyTorch (`microsoft/codebert-base`) and the stdlib `ast`
+module, on the self-hosted tier; pattern-based static analysis on the serverless tier.
+**Agent** — TinyFish Search, Fetch, Agent and Research APIs.
+
+---
+
+## 🛠️ Tech
+
+**Netlify tier** — Next.js 15 (App Router) · TypeScript (strict, zero `any`) · Tailwind CSS 3 ·
+Lucide · Framer Motion · Netlify Functions + Blobs · TinyFish Search / Fetch / Agent / Research.
+
+**Self-hosted tier** — Python 3.12 · FastAPI · asyncio · Pydantic v2 · Uvicorn · httpx ·
+HuggingFace Transformers + PyTorch (`microsoft/codebert-base`) · stdlib `ast`.
 
 ---
 
 ## 🚀 Quick start
 
-### 1. Backend
+### Option A — Netlify (the live site, recommended)
+
+See **Deploy to Netlify** above. Three steps: import the repo, add `TINYFISH_API_KEY`, deploy.
+
+To run it locally in the same mode:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local      # add your TINYFISH_API_KEY
+npm run dev                     # http://localhost:3000
+```
+
+### Option B — the self-hosted Python tier (full ML, local)
 
 ```bash
 cd backend
@@ -250,30 +346,7 @@ API docs: <http://localhost:8000/docs>
 > ```
 > Without it the service still works; `engine` simply reports `ast`.
 
-### Tests
-
-```bash
-cd backend
-python -m unittest discover -s tests -v      # offline, ~0.01s
-python smoke_test.py "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"   # live end-to-end
-```
-
-The unit tests run offline against a captured NVD-shaped fixture, so the fallback
-extraction is protected by CI rather than only by live runs. The smoke test drives the
-real SSE pipeline against the live TinyFish API and prints the agent trace, the
-assessment and the generated patch.
-
-### 2. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:3000
-```
-
-Point it at a different backend with `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8000`).
-
-### 3. Docker (optional)
+### Or run the whole stack with Docker
 
 ```bash
 cp backend/.env.example backend/.env     # add your TINYFISH_API_KEY
@@ -282,14 +355,44 @@ docker compose up --build
 
 Backend on `:8000`, frontend on `:3000`.
 
-### 4. CI
+### CI
 
-`.github/workflows/ci.yml` runs the backend unit tests, the frontend build and type check, and
-a **secret scan** that fails the build if a TinyFish API key is ever committed.
+`ci/ci.yml` runs the backend unit tests, the frontend build and type check, and a **secret scan**
+that fails the build if a TinyFish API key is ever committed. To enable it:
+
+```bash
+mkdir -p .github/workflows && cp ci/ci.yml .github/workflows/ci.yml
+```
+
+(It lives in `ci/` because creating workflow files through the API needs a token with the
+`workflow` scope.)
+
+### Tests
+
+```bash
+cd backend
+python -m unittest discover -s tests -v      # offline, 22 tests
+python smoke_test.py "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"   # live end-to-end
+
+cd ../frontend
+./scripts/test-scan.ps1                      # live end-to-end of the job flow
+```
 
 ---
 
 ## 🔑 Configuration
+
+### Netlify tier (the live site)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `TINYFISH_API_KEY` | ✅ **yes** | The TinyFish key. Without it the app runs in demo mode with simulated intelligence |
+| `NEXT_PUBLIC_API_URL` | — | Only if the API is hosted separately. Unset = same origin, which is what a single deploy needs |
+
+That is the whole list. No database URL, no queue, no third-party service — job state lives in
+Netlify Blobs.
+
+### Self-hosted tier (Python)
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -298,7 +401,8 @@ a **secret scan** that fails the build if a TinyFish API key is ever committed.
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-3-5-sonnet-latest` | Second choice |
 | `ENABLE_CODEBERT` | `true` | Set `false` to skip the model download entirely |
 | `CODEBERT_MODEL` | `microsoft/codebert-base` | Any HuggingFace encoder checkpoint |
-| `AGENT_TIME_BUDGET` | `150` | Seconds before abandoning the agent path |
+| `AGENT_TIME_BUDGET` | `120` | Seconds before abandoning the agent path |
+| `RESEARCH_TIME_BUDGET` | `45` | Seconds before abandoning the Research stage |
 | `CORS_ORIGINS` | `http://localhost:3000,…` | Comma-separated allowed origins |
 
 Get a TinyFish key at <https://agent.tinyfish.ai/api-keys>.
@@ -310,6 +414,35 @@ Get a TinyFish key at <https://agent.tinyfish.ai/api-keys>.
 
 ## 🔌 API
 
+### Netlify tier (the live site) — job-based
+
+A scan takes 75–130 seconds, which is longer than a synchronous serverless function can run, so
+the API is job-based. The scan continues in the background after the response is sent
+(`next/server` `after()`), and the client polls for progress.
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/v1/health` | Service status and effective config (no secrets) |
+| `POST` | `/api/v1/scan` | Body `{ target_url }` → `{ jobId, status }` immediately |
+| `GET` | `/api/v1/scan/{jobId}` | `{ status, events[], assessment, error }` |
+
+The dashboard polls every 1.2 s and appends only the events it has not seen, so the terminal
+fills up live exactly as it would with SSE.
+
+```bash
+# create a job
+curl -X POST https://<site>.netlify.app/api/v1/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"target_url":"https://nvd.nist.gov/vuln/detail/CVE-2021-44228"}'
+# -> {"jobId":"b077e1f3-…","status":"queued"}
+
+# poll it
+curl https://<site>.netlify.app/api/v1/scan/b077e1f3-…
+# -> {"status":"done","events":[…],"assessment":{…}}
+```
+
+### Self-hosted tier (Python) — streaming
+
 | Method | Route | Description |
 |---|---|---|
 | `GET` | `/api/v1/health` | Service status and effective config (no secrets) |
@@ -318,14 +451,15 @@ Get a TinyFish key at <https://agent.tinyfish.ai/api-keys>.
 | `POST` | `/api/v1/scan/stream` | Same stream, POST body (for long URLs) |
 | `GET` | `/api/v1/sample` | A ready-made target for a fast demo |
 
-The dashboard uses `EventSource` against the SSE route, so the terminal animates in real time.
-
 ---
 
 ## 📁 Project structure
 
 ```
-backend/
+netlify.toml                     # Netlify build config (base: frontend)
+docker-compose.yml               # runs the Python tier locally
+
+backend/                         # ── self-hosted tier (Python, full ML) ──
 ├── app/
 │   ├── main.py                       # FastAPI app, CORS, SSE endpoints
 │   ├── config.py                     # env loader (+ BOM-safe .env parser)
@@ -337,14 +471,31 @@ backend/
 ├── requirements.txt                  # core runtime
 ├── requirements-ml.txt               # optional torch + transformers
 ├── .env.example
+├── tests/                            # 22 offline unit tests
 └── smoke_test.py                     # end-to-end test against the live API
-frontend/
-├── src/app/{page,layout}.tsx         # dashboard
+
+frontend/                        # ── Netlify tier (the live site) ──
+├── src/app/
+│   ├── page.tsx                      # dashboard, job polling
+│   ├── layout.tsx  globals.css
+│   └── app/api/v1/
+│       ├── health/route.ts           # service status
+│       ├── scan/route.ts             # POST -> create job, run in background
+│       └── scan/[jobId]/route.ts     # GET  -> job status + event trace
 ├── src/components/
 │   ├── AgentTerminal.tsx             # live streaming terminal
 │   ├── RiskCard.tsx                  # risk dial + SVG radar chart
 │   └── PatchGenerator.tsx            # diff viewer
-└── src/lib/types.ts                  # mirrors the Pydantic schemas
+├── src/lib/
+│   ├── types.ts                      # shared types
+│   └── zeroday/
+│       ├── tinyfish.ts               # Search + Fetch + Agent + Research clients
+│       ├── nvd.ts                    # authoritative CVE enrichment
+│       ├── scanner.ts                # static analysis (pattern rules)
+│       ├── scoring.ts                # verdict engine + patch rulebook
+│       ├── pipeline.ts               # orchestration
+│       └── store.ts                  # job store (Netlify Blobs + memory)
+└── scripts/test-scan.ps1             # end-to-end test of the job flow
 ```
 
 ---
@@ -352,7 +503,11 @@ frontend/
 ## ⚠️ Honest limitations
 
 - **CodeBERT is embedding similarity, not a trained classifier.** The AST engine carries the
-  analysis; CodeBERT is a second opinion. The `engine` field always tells you which ran.
+  analysis; CodeBERT is a second opinion. The `engine` field always tells you which ran. On the
+  Netlify tier CodeBERT cannot run at all (no torch in a serverless function), so the response
+  says `engine: ast` — the API never overstates what produced a score.
+- **The Netlify tier uses pattern analysis; the Python tier uses full AST analysis** for Python
+  source. Same rule set, same CWEs, but only the Python tier understands Python structure.
 - **The agent path costs money per step** and is bounded by a time budget. Search + Fetch are
   free and carry the scan when the agent is unavailable.
 - **CWE coverage is a curated rule set**, not an exhaustive static analyser. It targets the
