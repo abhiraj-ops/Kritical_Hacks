@@ -1,0 +1,34 @@
+# ZeroDay-Guard AI — Netlify deployment
+#
+# The site is the Next.js app in frontend/. Netlify's OpenNext adapter
+# provisions the functions for the API routes, so the whole product -
+# dashboard and API - deploys as one unit.
+#
+# Before the first deploy, set TINYFISH_API_KEY in
+# Netlify -> Site configuration -> Environment variables.
+# Without it the service runs in demo mode.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Harden the responses. The API routes send no-store headers of their own.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# The API is job-based and polled, so nothing here should be cached hard.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store"

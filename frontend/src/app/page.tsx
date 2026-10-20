@@ -17,15 +17,22 @@ import {
 import AgentTerminal from "@/components/AgentTerminal";
 import RiskCard from "@/components/RiskCard";
 import PatchGenerator from "@/components/PatchGenerator";
-import { SEVERITY_STYLES, type AgentEvent, type Assessment, type HealthResponse } from "@/lib/types";
+import {
+  SEVERITY_STYLES,
+  type AgentEvent,
+  type Assessment,
+  type HealthResponse,
+} from "@/lib/types";
 
-// Default to the explicit IPv4 loopback: browsers resolve "localhost" to
-// ::1 first on some systems, while uvicorn commonly binds 127.0.0.1 only —
-// which makes the health check fail for no visible reason.
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// The API routes live in this same Next.js app, so the default is
+// same-origin — which is what a single Netlify deploy needs. Set
+// NEXT_PUBLIC_API_URL to point at a separately hosted backend instead.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-const SAMPLE_TARGET = "https://github.com/advisories?query=remote+code+execution";
+const SAMPLE_TARGET = "https://nvd.nist.gov/vuln/detail/CVE-2021-44228";
+
+/** How often the client asks the server for job progress. */
+const POLL_INTERVAL_MS = 1200;
 
 export default function Dashboard() {
   const [target, setTarget] = useState(SAMPLE_TARGET);
@@ -34,12 +41,13 @@ export default function Dashboard() {
   const [running, setRunning] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sourceRef = useRef<EventSource | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenRef = useRef(0);
 
-  // --- backend health ------------------------------------------------
+  // --- backend health ----------------------------------------------------
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/v1/health`)
+    fetch(`${API_BASE}/api/v1/health`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data) setHealth(data as HealthResponse);
@@ -52,95 +60,89 @@ export default function Dashboard() {
     };
   }, []);
 
-  // --- cleanup --------------------------------------------------------
+  // --- cleanup -----------------------------------------------------------
   useEffect(() => {
     return () => {
-      sourceRef.current?.close();
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  const startScan = useCallback(() => {
+  const startScan = useCallback(async () => {
     const trimmed = target.trim();
     if (!trimmed) {
       setError("Enter a target URL to scan.");
       return;
     }
 
-    sourceRef.current?.close();
+    if (timerRef.current) clearTimeout(timerRef.current);
     setEvents([]);
     setAssessment(null);
     setError(null);
     setRunning(true);
+    seenRef.current = 0;
 
-    const url = `${API_BASE}/api/v1/scan/stream?target_url=${encodeURIComponent(trimmed)}`;
-    const source = new EventSource(url);
-    sourceRef.current = source;
-
-    const push = (event: AgentEvent) =>
-      setEvents((prev) => [...prev, event]);
-
-    source.addEventListener("stage", (e) => {
-      try {
-        push(JSON.parse((e as MessageEvent).data) as AgentEvent);
-      } catch {
-        /* ignore malformed frame */
-      }
-    });
-
-    source.addEventListener("progress", (e) => {
-      try {
-        push(JSON.parse((e as MessageEvent).data) as AgentEvent);
-      } catch {
-        /* ignore malformed frame */
-      }
-    });
-
-    source.addEventListener("intel", (e) => {
-      try {
-        push(JSON.parse((e as MessageEvent).data) as AgentEvent);
-      } catch {
-        /* ignore malformed frame */
-      }
-    });
-
-    source.addEventListener("complete", (e) => {
-      let event: AgentEvent;
-      try {
-        event = JSON.parse((e as MessageEvent).data) as AgentEvent;
-      } catch {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_url: trimmed }),
+      });
+      const payload = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !payload.jobId) {
+        setError(payload.error ?? "Could not start the scan.");
         setRunning(false);
-        source.close();
         return;
       }
-      push(event);
-      const data = event.data ?? {};
-      if (data.assessment) {
-        setAssessment(data.assessment as Assessment);
-        setRunning(false);
-        source.close();
-      }
-      // NOTE: "complete" now only fires for the final assessment. The
-      // intermediate intel event has its own "intel" type, so closing the
-      // stream here cannot cut the assessment short.
-    });
 
-    source.addEventListener("error", (e) => {
-      try {
-        const event = JSON.parse((e as MessageEvent).data) as AgentEvent;
-        push(event);
-        setError(event.message);
-      } catch {
-        setError("Lost connection to the analysis backend.");
-      }
+      const jobId = payload.jobId;
+
+      const poll = async () => {
+        try {
+          const r = await fetch(`${API_BASE}/api/v1/scan/${jobId}`, {
+            cache: "no-store",
+          });
+          if (!r.ok) {
+            setError("Lost the scan job. Please start a new scan.");
+            setRunning(false);
+            return;
+          }
+          const job = (await r.json()) as {
+            status: "queued" | "running" | "done" | "error";
+            events: AgentEvent[];
+            assessment: Assessment | null;
+            error: string | null;
+          };
+
+          // Append only the events we have not seen yet — this is what makes
+          // the terminal fill up live.
+          if (job.events.length > seenRef.current) {
+            const fresh = job.events.slice(seenRef.current);
+            seenRef.current = job.events.length;
+            setEvents((prev) => [...prev, ...fresh]);
+          }
+
+          if (job.status === "done") {
+            if (job.assessment) setAssessment(job.assessment);
+            setRunning(false);
+            return;
+          }
+          if (job.status === "error") {
+            setError(job.error ?? "The scan failed.");
+            setRunning(false);
+            return;
+          }
+          timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+        } catch {
+          setError("Lost connection to the analysis backend.");
+          setRunning(false);
+        }
+      };
+
+      timerRef.current = setTimeout(poll, 300);
+    } catch {
+      setError("Could not reach the analysis backend.");
       setRunning(false);
-      source.close();
-    });
-
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) {
-        setRunning(false);
-      }
-    };
+    }
   }, [target]);
 
   const backendUp = health !== null;
@@ -160,8 +162,8 @@ export default function Dashboard() {
           </h1>
           <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-slate-500">
             Crawls a target with the TinyFish web agent, extracts live exploit
-            intelligence, scores it with CodeBERT + AST analysis, and generates
-            a remediation patch.
+            intelligence, scores it with static analysis, and generates a
+            remediation patch.
           </p>
         </div>
 
@@ -183,10 +185,8 @@ export default function Dashboard() {
                 llm: <span className="text-slate-300">{health.config.llm_provider}</span>
               </div>
               <div>
-                ml:{" "}
-                <span className="text-slate-300">
-                  {health.config.codebert_enabled ? health.config.codebert_model : "ast only"}
-                </span>
+                tier:{" "}
+                <span className="text-slate-300">{health.tier ?? "self-hosted"}</span>
               </div>
               {health.config.demo_mode && (
                 <div className="text-amber-500/80">demo mode — no live agent</div>
@@ -200,7 +200,7 @@ export default function Dashboard() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          startScan();
+          void startScan();
         }}
         className="panel mb-6 flex flex-col gap-3 p-3 sm:flex-row sm:items-center"
       >
@@ -209,7 +209,7 @@ export default function Dashboard() {
           <input
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            placeholder="https://github.com/advisories?query=remote+code+execution"
+            placeholder="https://nvd.nist.gov/vuln/detail/CVE-2021-44228"
             className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-slate-200 outline-none placeholder:text-slate-600"
           />
         </div>
@@ -266,7 +266,7 @@ export default function Dashboard() {
                       className="p-3"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <h4 className="text-[13px] font-medium text-slate-200">
+                        <h4 className="text-sm font-medium text-slate-200">
                           {finding.title}
                         </h4>
                         <span
@@ -327,8 +327,8 @@ export default function Dashboard() {
               {!running && (
                 <p className="max-w-sm text-[11.5px] text-slate-600">
                   The pipeline crawls the target with TinyFish, extracts exploit
-                  artefacts, scores them with CodeBERT + AST, then reasons over
-                  the result to produce a patch.
+                  artefacts, scores them, then reasons over the result to
+                  produce a patch.
                 </p>
               )}
             </section>
@@ -338,7 +338,8 @@ export default function Dashboard() {
 
       <footer className="mt-10 border-t border-[var(--line)] pt-4 text-[11px] text-slate-600">
         ZeroDay-Guard AI · TinyFish web agent (Search + Fetch + Agent + Research) ·
-        CodeBERT embeddings + AST static analysis · FastAPI + Next.js
+        AST static analysis + CodeBERT embeddings (self-hosted tier) · FastAPI ·
+        Next.js
       </footer>
     </main>
   );

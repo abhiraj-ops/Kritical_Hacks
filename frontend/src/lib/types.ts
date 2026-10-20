@@ -1,13 +1,14 @@
 /**
- * Types mirroring the FastAPI Pydantic schemas.
- * Kept in one place so a schema change breaks the build in exactly one file.
+ * Types shared by the dashboard and the serverless pipeline.
+ * Mirrors the Pydantic schemas in backend/app/models/schemas.py.
  */
 
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
 export type EventLevel = "info" | "success" | "warn" | "error" | "agent";
+export type EventType = "stage" | "finding" | "progress" | "intel" | "complete" | "error";
 
 export interface AgentEvent {
-  type: "stage" | "finding" | "progress" | "complete" | "error";
+  type: EventType;
   step: string;
   message: string;
   level: EventLevel;
@@ -73,6 +74,7 @@ export interface HealthResponse {
   status: string;
   service: string;
   version: string;
+  tier?: string;
   config: {
     app_name: string;
     version: string;
@@ -84,7 +86,10 @@ export interface HealthResponse {
   };
 }
 
-export const SEVERITY_STYLES: Record<Severity, { text: string; ring: string; bg: string; hex: string }> = {
+export const SEVERITY_STYLES: Record<
+  Severity,
+  { text: string; ring: string; bg: string; hex: string }
+> = {
   CRITICAL: {
     text: "text-rose-300",
     ring: "stroke-rose-500",
